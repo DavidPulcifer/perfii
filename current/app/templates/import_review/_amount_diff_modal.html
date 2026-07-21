@@ -1,0 +1,24 @@
+<div class="modal fade" id="amountDiffModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Resolve Amount Difference</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">The imported amount doesn't match the selected manual transaction.</p>
+        <div class="vstack gap-2">
+          <div>Imported amount: <strong id="impAmt">$0.00</strong></div>
+          <div>Manual amount: <strong id="manAmt">$0.00</strong></div>
+        </div>
+        <input type="hidden" id="diffRowIndex" value="">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" id="cancelDiff">Cancel match</button>
+        <button type="button" class="btn btn-secondary" data-accept="manual">Keep Manual Amount</button>
+        <button type="button" class="btn btn-primary" data-accept="import">Use Imported Amount</button>
+      </div>
+    </div>
+  </div>
+</div>
+

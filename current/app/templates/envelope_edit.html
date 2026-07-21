@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4>Edit Envelope</h4>
+<form class="row g-2" method="post">
+  <div class="col-5">
+    <label class="form-label">Name</label>
+    <input class="form-control" name="name" value="{{ env.name }}" required>
+  </div>
+  <div class="col-4">
+    <label class="form-label">Locked Account</label>
+    <select name="locked_account_id" class="form-select">
+      <option value="">Unlocked (usable on any account)</option>
+      {% for a in accounts %}
+        <option value="{{ a.id }}" {% if env.locked_account_id and env.locked_account_id==a.id %}selected{% endif %}>
+          Locked to: {{ a.name }}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-3">
+    <label class="form-label">Default amount ($)</label>
+    <input class="form-control" name="default_amount" type="number" step="0.01"
+           value="{{ (env.default_amount_cents or 0)/100 }}">
+  </div>
+  <div class="col-12 mt-2">
+    <button class="btn btn-primary">Save changes</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('envelopes.list_') }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

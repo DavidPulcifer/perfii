@@ -1,0 +1,25 @@
+# Target-specific systemd conversion template. Review every path, identity, and
+# security control before installation; do not copy this file unchanged.
+[Unit]
+Description=Perfii private web app
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=financeapp
+Group=financeapp
+WorkingDirectory=/srv/finance-app/current
+EnvironmentFile=/etc/finance-app/envelope-budget.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/srv/finance-app/venv/bin/gunicorn --config /srv/finance-app/current/gunicorn.conf.py wsgi:app
+Restart=always
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/srv/finance-app/data
+
+[Install]
+WantedBy=multi-user.target

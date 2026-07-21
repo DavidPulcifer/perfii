@@ -1,0 +1,40 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4>Account: {{ acct.name }}</h4>
+
+<div class="row g-3 mb-3">
+  <div class="col-auto">
+    <a class="btn btn-outline-primary" href="{{ url_for('transactions.list_by_account', account_id=acct.id) }}">
+      View Transactions
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('accounts.account_edit', account_id=acct.id) }}">
+      Edit Account
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-primary" href="{{ url_for('reconciliation.account_reconcile', account_id=acct.id) }}">
+      Reconcile
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('reconciliation.history', account_id=acct.id) }}">
+      Reconciliation History
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('core.index') }}">
+      Dashboard
+    </a>
+  </div>
+</div>
+
+<table class="table table-sm w-auto">
+  <tbody>
+    <tr><th scope="row">Type</th><td>{{ acct.account_type }}</td></tr>
+    <tr><th scope="row">Balance</th><td>{{ (current_balance_cents or 0)|money }}</td></tr>    
+  </tbody>
+</table>
+
+{% endblock %}

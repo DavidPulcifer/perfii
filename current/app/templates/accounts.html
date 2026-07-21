@@ -1,0 +1,121 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4>Accounts</h4>
+<form class="row g-3" method="post" action="{{ url_for('accounts.account_new') }}">
+  <div class="col-md-6">
+    <label class="form-label">Account name</label>
+    <input class="form-control" name="name" required>
+  </div>
+
+  <div class="col-md-6">
+    <label class="form-label">Type</label>
+    <select class="form-select" name="account_type" id="accountType">
+      <option value="bank">Bank</option>
+      <option value="credit_card">Credit Card</option>
+      <option value="loan">Loan</option>
+      <option value="investment">Investment</option>
+    </select>
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Opening date</label>
+    <input class="form-control" name="opening_date" type="date">
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">Opening balance ($)</label>
+    <input class="form-control" name="opening_balance" type="number" step="0.01" placeholder="0.00">
+  </div>
+
+  <!-- Credit Card fields -->
+  <div class="col-md-3 d-none" data-type="credit_card">
+    <label class="form-label">Credit limit ($)</label>
+    <input class="form-control" name="credit_limit" type="number" step="0.01" placeholder="0.00">
+  </div>
+
+  <!-- Loan fields -->
+  <div class="col-md-3 d-none" data-type="loan">
+    <label class="form-label">Original principal ($)</label>
+    <input class="form-control" name="original_principal" type="number" step="0.01" placeholder="0.00">
+  </div>
+  <div class="col-md-3 d-none" data-type="loan">
+    <label class="form-label">Normal monthly payment ($)</label>
+    <input class="form-control" name="normal_monthly_payment" type="number" step="0.01" min="0" placeholder="0.00">
+  </div>
+
+  <!-- Investment fields -->
+  <div class="col-md-4 d-none" data-type="investment">
+    <label class="form-label">Initial value ($)</label>
+    <input class="form-control" name="initial_value" type="number" step="0.01" placeholder="0.00">
+  </div>
+
+  <div class="col-12">
+    <button class="btn btn-primary">Add account</button>
+  </div>
+</form>
+
+<script>
+(function(){
+  const typeSel   = document.getElementById('accountType');
+  const opening   = document.querySelector('input[name="opening_balance"]');
+  const initVal   = document.querySelector('input[name="initial_value"]');
+
+  const toggleByType = () => {
+    document.querySelectorAll('[data-type]').forEach(el => {
+      el.classList.toggle('d-none', el.getAttribute('data-type') !== typeSel.value);
+    });
+    // When switching to investment, mirror opening->initial if user hasn't typed in initial yet
+    if (typeSel.value === 'investment' && opening && initVal && !initTouched) {
+      initVal.value = opening.value || '';
+    }
+  };
+
+  let initTouched = false;
+  if (initVal) {
+    initVal.addEventListener('input', () => { initTouched = true; });
+  }
+  if (opening) {
+    opening.addEventListener('input', () => {
+      if (typeSel.value === 'investment' && initVal && !initTouched) {
+        initVal.value = opening.value;
+      }
+    });
+  }
+  typeSel.addEventListener('change', toggleByType);
+  toggleByType();
+})();
+</script>
+
+<hr>
+<table class="table table-sm align-middle">
+  <thead><tr><th>Name</th><th>Dashboard</th><th>Reconciliation</th><th></th><th></th></tr></thead>
+  <tbody>
+  {% for account in accounts %}
+    <tr>
+      <td>{{ account.name }}</td>
+      <td>
+        {% if account.account_type == 'credit_card' %}
+          <a class="btn btn-sm btn-outline-primary"
+            href="{{ url_for('credit.credit_card_dashboard', account_id=account.id) }}">
+            Card Dashboard
+          </a>
+        {% endif %}
+      </td>
+
+      <td>
+        {% if account.account_type in ['bank', 'credit_card'] %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reconciliation.account_reconcile', account_id=account.id) }}">Reconcile</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reconciliation.history', account_id=account.id) }}">History</a>
+        {% endif %}
+      </td>
+      <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('accounts.account_edit', account_id=account.id) }}">Edit</a></td>
+      <td>
+        <form method="post" action="{{ url_for('accounts.account_delete', account_id=account.id) }}" onsubmit="return confirm('Delete account and its transactions?')">
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

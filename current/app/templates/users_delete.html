@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4 class="mb-3">Delete User</h4>
+
+<div class="alert alert-danger">
+  <div class="fw-semibold mb-1">This will permanently delete the user and their database file.</div>
+  <div>There is no undo.</div>
+</div>
+
+<div class="card" style="max-width: 48rem;">
+  <div class="card-body">
+    <dl class="row mb-3">
+      <dt class="col-sm-3">User</dt>
+      <dd class="col-sm-9">{{ u.name }}</dd>
+
+      <dt class="col-sm-3">Database</dt>
+      <dd class="col-sm-9"><code class="text-wrap">{{ u.db_path }}</code></dd>
+
+      <dt class="col-sm-3">Created</dt>
+      <dd class="col-sm-9">{{ u.created_at or '—' }}</dd>
+    </dl>
+
+    <form method="post" action="{{ url_for('users.delete_user') }}">
+      <input type="hidden" name="user_id" value="{{ u.id }}">
+      <div class="mb-3">
+        <label class="form-label">Type <code>delete me</code> to confirm</label>
+        <input class="form-control" type="text" name="confirm_text" autocomplete="off" required>
+      </div>
+      <div class="d-flex">
+        <a class="btn btn-outline-secondary" href="{{ url_for('users.users_home') }}">Cancel</a>
+        <button class="btn btn-danger ms-auto">Delete User &amp; Database</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

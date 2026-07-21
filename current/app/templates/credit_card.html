@@ -1,0 +1,364 @@
+{% extends "layout.html" %}
+{% block content %}
+
+{% macro credit_balance_label(cents) -%}
+  {% if cents < 0 %}
+    {{ (-cents)|money }} owed
+  {% elif cents > 0 %}
+    {{ cents|money }} credit
+  {% else %}
+    {{ 0|money }}
+  {% endif %}
+{%- endmacro %}
+
+{% macro credit_tx_pager(position, show_disabled=False) -%}
+  {% if show_disabled or tx_prev_url or tx_next_url %}
+    <div class="d-flex justify-content-between align-items-center my-2 credit-transaction-pager" data-pagination-position="{{ position }}">
+      <div class="text-muted small">
+        {% if tx_total %}
+          Showing {{ ((tx_page-1)*tx_per_page)+1 }}-{{ [tx_page*tx_per_page, tx_total]|min }} of {{ tx_total }}
+        {% else %}
+          No transactions
+        {% endif %}
+      </div>
+      <div class="btn-group">
+        <a class="btn btn-sm btn-outline-secondary {% if not tx_prev_url %}disabled{% endif %}" href="{{ tx_prev_url or '#' }}">Previous</a>
+        <a class="btn btn-sm btn-outline-secondary {% if not tx_next_url %}disabled{% endif %}" href="{{ tx_next_url or '#' }}">Next</a>
+      </div>
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+<style>
+  .credit-transactions-table-wrapper { overflow-x: auto; }
+  table.credit-transactions-table { min-width: 860px; }
+  table.credit-transactions-table td, table.credit-transactions-table th { vertical-align: top; }
+  .credit-running-balance { white-space: nowrap; }
+  @media (max-width: 720px) {
+    .credit-transactions-table .credit-tx-type { display: none; }
+  }
+</style>
+
+<h4 class="mb-3">Credit Card — {{ acct.name }}</h4>
+
+<div class="row g-3 mb-3">
+  <div class="col-auto">
+    <a class="btn btn-outline-primary" href="{{ url_for('transactions.list_by_account', account_id=acct.id) }}">
+      View Transactions
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-primary" href="{{ url_for('reconciliation.account_reconcile', account_id=acct.id) }}">
+      Reconcile
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('reconciliation.history', account_id=acct.id) }}">
+      Reconciliation History
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('accounts.account_edit', account_id=acct.id) }}">
+      Edit Account
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('core.index') }}">
+      Back to Main Dashboard
+    </a>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Left: totals, usage, payoff -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            {% if credit_balance_cents > 0 %}
+              <div class="text-muted small">Credit Balance</div>
+              <div class="fs-4 text-success">{{ credit_balance_cents|money }} credit</div>
+            {% else %}
+              <div class="text-muted small">Total Owed</div>
+              <div class="fs-4">{{ owed_total_cents|money }}</div>
+            {% endif %}
+          </div>
+          <div class="text-end">
+            <div class="text-muted small">Credit Limit</div>
+            <div class="fs-6">{{ credit_limit|money }}</div>
+          </div>
+        </div>
+
+        <div class="mt-3 d-flex align-items-center justify-content-between">
+          <div class="text-muted small">Available to Allocate</div>
+          <div class="fs-5">{{ available_cents|money }}</div>
+        </div>
+
+        <div class="mt-3">
+          <div class="text-muted small mb-1">Usage</div>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ usage_pct }}">
+            <div class="progress-bar" style="width: {{ usage_pct }}%;">{{ usage_pct }}%</div>
+          </div>
+        </div>
+
+        <div class="mt-3 small text-muted">
+          {% if credit_balance_cents > 0 %}
+            Card has a positive credit balance.
+          {% elif months_to_zero is defined and months_to_zero is not none and months_to_zero > 0 %}
+            Est. payoff in <strong>{{ months_to_zero }}</strong> month{{ 's' if months_to_zero != 1 else '' }} (avg last 6 months).
+          {% elif owed_total_cents == 0 %}
+            Paid off.
+          {% else %}
+            Add some payments to compute payoff estimate.
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: envelopes + Allocate -->
+  <div class="col-lg-6">
+  <div class="card h-100">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="fw-semibold">Envelopes on this Card</div>
+        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#ccAllocateModal">Transfer</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="app-table-head">
+            <tr>
+              <th>Envelope</th>
+              <th class="text-end">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% if env_metrics %}
+              {% for e in env_metrics %}
+              <tr>
+                <td>{{ e.envelope_name }}</td>
+                <td class="text-end {% if e.balance_cents < 0 %}text-danger{% endif %}">
+                  {{ e.balance_cents|money }}
+                </td>
+              </tr>
+              {% endfor %}
+            {% else %}
+              <tr><td colspan="2" class="text-muted">No envelopes locked to this credit card yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      <div class="small text-muted mt-2">
+        “Available to Allocate” = Credit Limit − (Total Owed + Sum of envelope balances on this card).
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mt-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+      <div>
+        <div class="fw-semibold">Recent Transactions</div>
+        <div class="small text-muted">Newest first. Running balance is the card balance after each transaction posted.</div>
+      </div>
+      <form class="d-flex align-items-center gap-2" method="get" action="{{ url_for('credit.credit_card_dashboard', account_id=account_id) }}">
+        <label class="form-label small text-muted mb-0" for="creditTxPerPage">Per page</label>
+        <select class="form-select form-select-sm" id="creditTxPerPage" name="per_page" onchange="this.form.submit()">
+          {% for n in tx_per_page_options %}
+            <option value="{{ n }}" {% if tx_per_page == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="page" value="1">
+      </form>
+    </div>
+
+    {{ credit_tx_pager('top') }}
+    <div class="credit-transactions-table-wrapper">
+      <table class="table table-sm align-middle credit-transactions-table mb-0">
+        <thead class="app-table-head">
+          <tr>
+            <th>Date</th>
+            <th>Payee / Memo</th>
+            <th class="credit-tx-type">Type</th>
+            <th class="text-end">Amount</th>
+            <th class="text-end">Running Balance</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in txs %}
+            <tr>
+              <td>{{ t.posted_at }}</td>
+              <td>
+                <div>{{ t.payee or t.ttype }}</div>
+                {% if t.memo %}<div class="small text-muted">{{ t.memo }}</div>{% endif %}
+                {% if t.import_validated %}<span class="badge text-bg-info">Imported</span>{% endif %}
+                {% if t.is_reconciled %}<span class="badge text-bg-success">Reconciled</span>{% endif %}
+              </td>
+              <td class="credit-tx-type">{{ t.ttype }}</td>
+              <td class="text-end {% if t.amount_cents < 0 %}text-danger{% else %}text-success{% endif %}">{{ t.amount_cents|money }}</td>
+              <td class="text-end credit-running-balance {% if t.running_balance_cents > 0 %}text-success{% elif t.running_balance_cents < 0 %}text-body{% endif %}">
+                {{ credit_balance_label(t.running_balance_cents) }}
+              </td>
+              <td>
+                {% if t.ttype in ['transfer_in','transfer_out'] %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.transfer_edit', tx_id=t.id, return_to=current_path()) }}">Edit Transfer</a>
+                {% else %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.transaction_edit', tx_id=t.id, return_to=current_path()) }}">Edit</a>
+                {% endif %}
+                <form method="post" action="{{ url_for('transactions.transaction_delete', tx_id=t.id) }}" class="d-inline" onsubmit="return confirm('Delete this transaction? This also removes its splits.')">
+                  <input type="hidden" name="return_to" value="{{ current_path() }}">
+                  <button class="btn btn-sm btn-outline-danger">Delete</button>
+                </form>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="text-muted">No transactions on this credit card yet.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {{ credit_tx_pager('bottom', show_disabled=True) }}
+  </div>
+</div>
+
+<!-- Allocate Modal: creates a transfer into this credit card and splits the inbound leg across card envelopes -->
+<div class="modal fade" id="ccAllocateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('credit.credit_allocate', account_id=account_id) }}">
+        <input type="hidden" id="ccAllocateToAccount" value="{{ account_id }}">
+        <div class="modal-header">
+          <h5 class="modal-title">Transfer to {{ acct.name }} Envelopes</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body">
+          <div class="row g-2 mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Transfer date</label>
+              <input class="form-control" type="date" name="posted_at" data-default-today>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">From envelope</label>
+              <select class="form-select" name="from_envelope_id" required>
+                <option value="">Choose envelope...</option>
+                {% for e in from_envelopes %}
+                  <option value="{{ e.id }}">{{ e.account_name }} - {{ e.name }} ({{ e.balance_cents|money }})</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Note (optional)</label>
+              <input class="form-control" name="note" maxlength="200">
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="form-label mb-0">Transfer into {{ acct.name }} envelopes</label>
+            <div class="small">
+              <span class="text-muted">Calculated total</span>
+              <strong class="ms-2" data-cc-transfer-total>$0.00</strong>
+            </div>
+          </div>
+
+          {% with
+            envelopes                      = alloc_envelopes,
+            env_selector_balances          = envelope_balances_json,
+            env_selector_input_prefix      = 'alloc',
+            env_selector_input_mid         = 'amt',
+            env_selector_values            = {},
+            env_selector_modes             = {},
+            env_selector_show_mode         = True,
+            env_selector_show_default_buttons = True,
+            env_selector_show_zero_balance = True,
+            env_selector_scope_id          = 'cc-alloc',
+            env_selector_account_selector  = '#ccAllocateToAccount',
+            env_selector_enable_remainder  = False,
+            env_selector_validation_label  = 'credit card transfer split'
+          %}
+            {% include "_envelope_selector.html" %}
+          {% endwith %}
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-primary">Record Transfer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const ready = (fn) => document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', fn, { once: true })
+    : fn();
+
+  ready(() => {
+    const modal = document.getElementById('ccAllocateModal');
+    if (!modal) return;
+    const form = modal.querySelector('form');
+    const totalEl = modal.querySelector('[data-cc-transfer-total]');
+    const accountInput = modal.querySelector('#ccAllocateToAccount');
+    let balances = {};
+    try {
+      balances = JSON.parse(document.getElementById('balances-json')?.textContent || '{}');
+    } catch {
+      balances = {};
+    }
+
+    const centsFrom = (input) => {
+      const raw = String(input?.value || '').replace(/,/g, '').trim();
+      if (!raw) return 0;
+      const number = Number(raw);
+      return Number.isFinite(number) ? Math.round(number * 100) : 0;
+    };
+    const money = (cents) => {
+      const dollars = Math.abs(cents) / 100;
+      return `${cents < 0 ? '-' : ''}$${dollars.toFixed(2)}`;
+    };
+
+    const updateTotal = () => {
+      const accountId = String(accountInput?.value || '');
+      const accountBalances = balances[accountId] || {};
+      let total = 0;
+      modal.querySelectorAll('[data-env-row]').forEach((row) => {
+        const input = row.querySelector('.env-input');
+        if (!input || input.disabled) return;
+        const envelopeId = String(row.getAttribute('data-envelope-id') || '');
+        const entered = centsFrom(input);
+        const mode = row.querySelector('.env-mode')?.value || 'add';
+        if (mode === 'set') {
+          const current = parseInt(accountBalances[envelopeId] || 0, 10) || 0;
+          total += entered - current;
+        } else {
+          total += entered;
+        }
+      });
+      if (totalEl) {
+        totalEl.textContent = money(total);
+        totalEl.classList.toggle('text-danger', total < 0);
+        totalEl.classList.toggle('text-muted', total === 0);
+      }
+    };
+
+    form.addEventListener('input', (event) => {
+      if (event.target?.classList?.contains('env-input')) updateTotal();
+    });
+    form.addEventListener('change', (event) => {
+      if (event.target?.classList?.contains('env-mode')) updateTotal();
+    });
+    form.addEventListener('click', (event) => {
+      if (event.target?.closest('[data-env-default]')) setTimeout(updateTotal, 0);
+    });
+    modal.addEventListener('shown.bs.modal', updateTotal);
+    setTimeout(updateTotal, 0);
+  });
+})();
+</script>
+
+{% endblock %}

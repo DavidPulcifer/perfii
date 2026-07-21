@@ -1,0 +1,37 @@
+<div class="modal fade" id="{{ modal_id }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">{{ title }} — {{ t.posted_at }} · {{ t.payee }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="small text-muted mb-2">
+          {{ help_text }}
+        </div>
+        <input type="hidden" id="{{ total_id }}" value="{{ total_value }}">
+        {% set envelopes = envelopes %}
+        {% set env_selector_values = {} %}
+        {% set env_selector_modes = {} %}
+        {% set env_selector_show_mode = show_mode %}
+        {% set env_selector_show_default_buttons = True %}
+        {% set env_selector_input_prefix = input_prefix %}
+        {% set env_selector_input_mid = "" %}
+        {% set env_selector_scope_id = scope_id %}
+        {% set env_selector_account_selector = "#importAccount" %}
+        {% set env_selector_enable_remainder = True %}
+        {% set env_selector_remainder_name = remainder_name %}
+        {% set env_selector_remainder_value = "" %}
+        {% set env_selector_remainder_target_sign = -1 if input_prefix.startswith("exp") else 1 %}
+        {% set env_selector_remainder_legacy_outflow = input_prefix.startswith("exp") %}
+        {% set env_selector_total_selector = "#" ~ total_id %}
+        {% set env_selector_validation_label = "expense split" if input_prefix.startswith("exp") else "income split" %}
+        {% include "_envelope_selector.html" %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary me-auto" data-role="split-clear">Clear</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-validate-env-dismiss>Done</button>
+      </div>
+    </div>
+  </div>
+</div>

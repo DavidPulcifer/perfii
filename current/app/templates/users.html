@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="mb-3">
+  <h1 class="h2 mb-1">Choose a budget workspace</h1>
+  <p class="text-body-secondary mb-0">Each person or household workspace keeps its financial records in a separate local ledger.</p>
+</div>
+<div class="d-flex flex-wrap gap-2 mb-3">
+  <a class="btn btn-primary ms-auto" href="{{ url_for('users.new_user_form') }}">Add workspace</a>
+  {% if current_is_admin %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('users.admin_users') }}">Manage users</a>
+  {% endif %}
+  {% if current_user_name %}
+    <a class="btn btn-outline-secondary" href="{{ url_for('users.settings') }}">Workspace settings</a>
+    <form method="post" action="{{ url_for('users.logout') }}" class="d-inline">
+      <button class="btn btn-outline-danger">Sign out</button>
+    </form>
+  {% endif %}
+</div>
+<div class="card">
+  <div class="card-body p-0">
+    <table class="table table-sm align-middle mb-0">
+      <thead class="app-table-head">
+        <tr><th>User</th><th>Status</th><th class="text-end" style="width:16rem;">Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr>
+          <td class="fw-semibold">
+            {{ u.name }}
+            {% if selected_user_id == u.id %}<span class="badge text-bg-info ms-1">Current</span>{% endif %}
+          </td>
+          <td>
+            <span class="badge text-bg-{{ 'primary' if u.role == 'admin' else 'secondary' }}">{{ 'Admin' if u.role == 'admin' else 'User' }}</span>
+            <span class="badge text-bg-{{ 'warning' if u.has_password else 'secondary' }}">{{ 'Password enabled' if u.has_password else 'No password' }}</span>
+          </td>
+          <td class="text-end text-nowrap">
+            <form method="post" action="{{ url_for('users.select_user') }}" class="d-inline">
+                <input type="hidden" name="user_id" value="{{ u.id }}">
+                <button class="btn btn-sm btn-outline-primary">{{ 'Unlock' if u.has_password else 'Select' }}</button>
+            </form>
+
+            {% set is_default = (u.db_path == default_db_path) or (u.name|lower == 'default') %}
+            {% if is_default %}
+                <button class="btn btn-sm btn-outline-danger ms-2" disabled title="Default user cannot be deleted">Delete</button>
+            {% else %}
+                <a class="btn btn-sm btn-outline-danger ms-2" href="{{ url_for('users.delete_user_form', user_id=u.id) }}">Delete</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-muted">No users yet. Create one.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

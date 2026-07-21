@@ -1,0 +1,167 @@
+{
+  "$schema": "./customization-profile.schema.json",
+  "schema_version": 1,
+  "profile_name": "Synthetic Pay Yourself First example",
+  "requirements_status": "ready_for_implementation",
+  "project": {
+    "display_name": "My Envelope Plan",
+    "primary_goal": "Make the owner's payday and envelope workflow easier without exposing financial data"
+  },
+  "requested_changes": [
+    {
+      "change_id": "pay_yourself_first_workflow",
+      "category": "workflow",
+      "outcome": "Preview percentage-based savings allocations from a take-home paycheck and record them only after explicit approval",
+      "priority": "must_have",
+      "decision_status": "confirmed",
+      "notes": "Keep the planner deterministic and independent of banks or runtime AI services"
+    }
+  ],
+  "environment": {
+    "target": "local_web",
+    "operating_system": "windows",
+    "access_model": "one_trusted_user",
+    "data_location_preference": "An application-private directory selected during setup",
+    "backup_expectation": "A documented, encrypted, recoverable backup",
+    "network_access": "loopback_only",
+    "offline_requirement": "not_required",
+    "authentication_expectation": "No additional authentication while the app is bound only to loopback",
+    "notes": "Reconsider authentication before changing the network boundary"
+  },
+  "data_posture": {
+    "starting_point": "new_empty_workspace",
+    "development_data": "synthetic_only",
+    "migration_scope": "No existing ledger migration is part of this synthetic example",
+    "backup_before_data_change": "not_applicable",
+    "real_data_authorization_status": "not_applicable",
+    "notes": "Use a newly bootstrapped fictional workspace for implementation and demonstration"
+  },
+  "localization": {
+    "currency": "USD",
+    "locale": "en-US",
+    "date_format": "YYYY-MM-DD",
+    "timezone": "UTC"
+  },
+  "terminology": {
+    "envelope_singular": "envelope",
+    "envelope_plural": "envelopes",
+    "savings_workflow_name": "Pay Yourself First"
+  },
+  "appearance": {
+    "theme_profile": "agent-config/theme-profile.example.json",
+    "notes": "Calm, readable, and restrained in both light and dark modes",
+    "accessibility_requirements": [
+      "Keep text and interactive control contrast at or above the project's validated thresholds"
+    ]
+  },
+  "account_roles": [
+    {
+      "role_id": "income_hub",
+      "display_name": "Paycheck Checking",
+      "purpose": "Receives income and funds the payday plan"
+    },
+    {
+      "role_id": "quick_access_reserve",
+      "display_name": "Quick-Access Reserve",
+      "purpose": "Keeps near-term savings readily accessible"
+    },
+    {
+      "role_id": "long_term_savings",
+      "display_name": "Long-Term Goals",
+      "purpose": "Holds savings intended for longer time horizons"
+    }
+  ],
+  "workflows": [
+    {
+      "workflow_id": "pay_yourself_first",
+      "decision_status": "confirmed",
+      "trigger": "The user is processing a take-home paycheck",
+      "inputs": [
+        "Take-home amount",
+        "Saved percentage rules",
+        "Selected source and destination account roles",
+        "Accessible-savings target and current accessible balance"
+      ],
+      "rules": [
+        "Calculate consequential money values as integer cents and contribution percentages as basis points",
+        "Allocate 100% of a contribution to the quick-access reserve while its opening balance is below the target, even when that contribution reaches or crosses the target",
+        "Starting with the next contribution after the target has been reached, allocate 100% to the long-term destination",
+        "A preview never writes transactions, transfers, splits, or settings"
+      ],
+      "review_point": "Show each allocation, grouped transfer totals, and the remaining paycheck before recording anything",
+      "writes": [
+        "Only explicitly approved linked transfers",
+        "Matching envelope splits for the approved transfer legs"
+      ],
+      "recovery": "Canceling before confirmation writes nothing; later correction follows the existing linked-transfer edit and reconciliation protections",
+      "privacy_demo": "Use fictional institutions, account roles, balances, paycheck amounts, and transactions",
+      "success": "The preview matches every deterministic rule and confirmation creates balanced linked transfers with matching splits"
+    }
+  ],
+  "privacy": {
+    "real_data_allowed_for_development": false,
+    "synthetic_demo_required": true,
+    "credentials_may_be_stored_in_profile": false,
+    "notes": "Use fictional institutions, people, balances, and transactions"
+  },
+  "decisions": [
+    {
+      "decision_id": "hard_savings_cutoff",
+      "subject": "Accessible-savings target routing",
+      "statement": "A contribution begun below the target goes entirely to accessible savings, including a contribution that crosses the target; later contributions go entirely to long-term savings",
+      "status": "confirmed",
+      "confirmation_required": true,
+      "consequence_if_wrong": "The recommended destination and recorded transfer would not match the user's savings policy",
+      "related_change_ids": ["pay_yourself_first_workflow"]
+    },
+    {
+      "decision_id": "local_only_access",
+      "subject": "Network and authentication boundary",
+      "statement": "This example is implemented and tested as a loopback-only local web application",
+      "status": "confirmed",
+      "confirmation_required": true,
+      "consequence_if_wrong": "A broader access boundary would require a separate authentication and deployment plan",
+      "related_change_ids": ["pay_yourself_first_workflow"]
+    }
+  ],
+  "acceptance_scenarios": [
+    {
+      "scenario_id": "preview_below_target",
+      "data_classification": "synthetic",
+      "given": "A fictional $2,000 paycheck, a 10% savings rule, and an accessible balance below its target",
+      "when": "The user previews the payday plan",
+      "then": "The full $200 recommendation goes to accessible savings and no records are written",
+      "covers_change_ids": ["pay_yourself_first_workflow"],
+      "financial_invariants": ["Planning previews are side-effect free"]
+    },
+    {
+      "scenario_id": "cross_target_without_split",
+      "data_classification": "synthetic",
+      "given": "A fictional contribution starts with the accessible balance below target and is large enough to cross it",
+      "when": "The user previews that contribution and then previews a later contribution",
+      "then": "The crossing contribution goes entirely to accessible savings and the later contribution goes entirely to long-term savings",
+      "covers_change_ids": ["pay_yourself_first_workflow"]
+    },
+    {
+      "scenario_id": "confirm_balanced_transfers",
+      "data_classification": "synthetic",
+      "given": "A reviewed fictional recommendation with compatible source, destination, and envelope roles",
+      "when": "The user explicitly confirms it",
+      "then": "Balanced linked transfer legs and matching envelope splits are recorded atomically",
+      "covers_change_ids": ["pay_yourself_first_workflow"],
+      "financial_invariants": [
+        "Transfers are linked equal-and-opposite pairs",
+        "Splits sum exactly to their signed parent amounts"
+      ]
+    }
+  ],
+  "deferred": [
+    "Direct bank connections",
+    "Automatic movement of money",
+    "Public multi-user hosting"
+  ],
+  "open_questions": [],
+  "handoff_notes": [
+    "Do not infer desktop or server deployment support from this local-web example"
+  ]
+}

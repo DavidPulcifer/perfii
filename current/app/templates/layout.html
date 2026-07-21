@@ -1,0 +1,720 @@
+<!doctype html>
+<html data-bs-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{ config.APP_DISPLAY_NAME }}</title>
+  <script>
+    (function () {
+      const storageKey = "fitft.theme";
+      const validThemes = new Set(["light", "dark", "system"]);
+      let stored = null;
+      try { stored = localStorage.getItem(storageKey); } catch {}
+      const preference = validThemes.has(stored) ? stored : "system";
+      const systemDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.bsTheme = preference === "system" ? (systemDark ? "dark" : "light") : preference;
+      document.documentElement.dataset.themePreference = preference;
+    })();
+  </script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='style.css', v='20260714-mobile-navbar') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='theme.generated.css') }}" rel="stylesheet">
+</head>
+<body>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='checkbox_range.js', v='20260605-fin065') }}"></script>
+  <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom mb-3">
+    <div class="container-fluid app-navbar-shell">
+      <a class="navbar-brand" href="{{ url_for('core.index') }}">{{ config.APP_DISPLAY_NAME }}</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#appNavbarMenu" aria-controls="appNavbarMenu" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      {% if current_user_name %}
+        <div class="app-navbar-actions d-flex align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#newExpenseModal">New Expense</button>
+          <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#newIncomeModal">New Income</button>
+          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newTransferModal">Transfer</button>
+        </div>
+      {% endif %}
+      <div class="collapse navbar-collapse app-navbar-menu" id="appNavbarMenu">
+        <div class="navbar-nav me-lg-auto">
+          {% if current_user_name %}
+            <a class="nav-link" href="{{ url_for('transactions.list_') }}">Transactions</a>
+            <a class="nav-link" href="{{ url_for('savings.payday') }}">Savings</a>
+            <a class="nav-link" href="{{ url_for('imports.upload_form') }}">Import</a>
+            <a class="nav-link" href="{{ url_for('imports.rules_list') }}">Rules</a>
+          {% endif %}
+        </div>
+        <div class="app-navbar-utility d-flex align-items-lg-center gap-2">
+          {% if current_user_name %}
+            <span class="badge text-bg-secondary">User: {{ current_user_name }}</span>
+          {% else %}
+            <span class="badge text-bg-secondary">No user selected</span>
+          {% endif %}
+          <select class="form-select form-select-sm theme-select" data-theme-select aria-label="Color theme">
+            <option value="system">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('users.users_home') }}">Users</a>
+          {% if current_user_name %}
+            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('users.settings') }}">Settings</a>
+            {% if current_user_is_admin %}<a class="btn btn-sm btn-outline-warning" href="{{ url_for('users.admin_users') }}">Admin</a>{% endif %}
+            <form method="post" action="{{ url_for('users.logout') }}" class="app-navbar-signout"><button class="btn btn-sm btn-outline-secondary">Sign Out</button></form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </nav>
+  <div class="container">
+    {% if snapshot_storage_alert %}
+      <div class="alert alert-warning d-flex flex-column gap-1" role="alert">
+        <strong>Snapshot storage is getting large.</strong>
+        <div>
+          Snapshot history is using <strong>{{ snapshot_storage_alert.total_human }}</strong>
+          across Git history and database snapshots.
+          The warning threshold is <strong>{{ snapshot_storage_alert.threshold_human }}</strong>.
+        </div>
+        <div class="small text-body-secondary">
+          Git history: {{ snapshot_storage_alert.git_human }} · Database snapshots: {{ snapshot_storage_alert.snapshot_human }}
+        </div>
+      </div>
+    {% endif %}
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for cat, msg in messages %}
+          <div class="alert alert-{{cat}}">
+            {% if msg is mapping %}
+              {{ msg.text }}
+              {% if msg.import_undo_session_id %}
+                <form method="post" action="{{ url_for('imports.undo_last_import') }}" class="d-inline ms-2">
+                  <input type="hidden" name="import_session_id" value="{{ msg.import_undo_session_id }}">
+                  <button type="submit" class="btn btn-link alert-link p-0 align-baseline">Undo</button>
+                </form>
+              {% endif %}
+            {% else %}
+              {{ msg }}
+            {% endif %}
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </div>
+
+  <!-- ===== Global Transaction Modals ===== -->
+
+  {% include "_modals.html" %}
+
+  <script id="envelopesJSON" type="application/json">{{ envelopes_json | default([]) | tojson }}</script>
+  <script id="balancesJSON"  type="application/json">{{ balances_json | default([]) | tojson }}</script>
+  <script id="ACCOUNTS_JSON" type="application/json"> {{ accounts_json |default([]) |tojson }}</script>
+
+  <script>
+  (function(){
+    const storageKey = "fitft.theme";
+    const root = document.documentElement;
+    const select = document.querySelector("[data-theme-select]");
+    const media = window.matchMedia ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+    const resolveTheme = (preference) => preference === "system" ? (media?.matches ? "dark" : "light") : preference;
+    const applyTheme = (preference) => {
+      const next = ["light", "dark", "system"].includes(preference) ? preference : "system";
+      root.dataset.themePreference = next;
+      root.dataset.bsTheme = resolveTheme(next);
+      if (select) select.value = next;
+    };
+
+    applyTheme(root.dataset.themePreference || "system");
+    select?.addEventListener("change", () => {
+      try { localStorage.setItem(storageKey, select.value); } catch {}
+      applyTheme(select.value);
+      window.dispatchEvent(new CustomEvent("fitft:themechange", { detail: { theme: root.dataset.bsTheme } }));
+    });
+    media?.addEventListener("change", () => {
+      if ((root.dataset.themePreference || "system") !== "system") return;
+      applyTheme("system");
+      window.dispatchEvent(new CustomEvent("fitft:themechange", { detail: { theme: root.dataset.bsTheme } }));
+    });
+  })();
+
+  (function(){
+    const envs = JSON.parse(document.getElementById('envelopesJSON').textContent);
+
+    const fmtMoney = (c) => {
+      const m = Math.abs(c)/100;
+      return (c<0?'-$':'$') + m.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    };
+    const centsFrom = (el) => {
+      const v = (typeof el === 'string' ? el : (el?.value ?? '')).trim();
+      if (!v) return 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n*100) : 0;
+    };
+
+    function installZeroCurrencyAutoSelect(){
+      const currencyInputSelector = [
+        'input[type="number"][step="0.01"]',
+        'input[type="number"][inputmode="decimal"]',
+        'input[inputmode="decimal"]',
+        'input[data-currency-input]'
+      ].join(',');
+      const zeroCurrencyPattern = /^[-+]?(?:0+(?:\.0{0,2})?|\.0{1,2})$/;
+
+      const shouldSelect = (el) => {
+        if (!el || !el.matches || !el.matches(currencyInputSelector)) return false;
+        if (el.disabled || el.readOnly) return false;
+        const value = String(el.value || '').replace(/[$,\s]/g, '');
+        return value !== '' && zeroCurrencyPattern.test(value);
+      };
+
+      const selectValue = (el) => {
+        if (!shouldSelect(el)) return;
+        try { el.select(); } catch {}
+      };
+
+      document.addEventListener('focusin', (e) => {
+        const el = e.target;
+        if (!shouldSelect(el)) return;
+        el.dataset.selectZeroCurrencyOnPointerUp = '1';
+        setTimeout(() => selectValue(el), 0);
+      });
+
+      document.addEventListener('pointerup', (e) => {
+        const el = e.target;
+        if (!el || el.dataset?.selectZeroCurrencyOnPointerUp !== '1') return;
+        delete el.dataset.selectZeroCurrencyOnPointerUp;
+        if (!shouldSelect(el)) return;
+        e.preventDefault();
+        selectValue(el);
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.target?.dataset) delete e.target.dataset.selectZeroCurrencyOnPointerUp;
+      });
+      document.addEventListener('input', (e) => {
+        if (e.target?.dataset) delete e.target.dataset.selectZeroCurrencyOnPointerUp;
+      });
+    }
+    installZeroCurrencyAutoSelect();
+    const allowedEnvs = (accId) => {
+      const s = String(accId || '');
+      return envs.filter(e => e.locked_account_id === null || String(e.locked_account_id) === s);
+    };
+
+    // ---- Expense / Income configurator (same as you had, trimmed) ----
+    function configureSplitForm(form){
+      if (!form) return;
+      if (form.querySelector(".env-scope")) return; // shared envelope selector owns filtering, remaining, and remainder display
+      const type      = form.dataset.type; // 'expense' | 'income'
+      const acctSel   = form.querySelector('select[name="account_id"]');
+      const amtInput  = form.querySelector('input[name="amount"]');
+      const quickSel  = form.querySelector('select.env-quick');
+      const remainder = form.querySelector('select.remainder-select');
+      const rows      = Array.from(form.querySelectorAll('.env-row'));
+      const modeInput = form.querySelector('input[name="mode"]');
+      const details   = form.querySelector('details.split-details');
+      const remainLbl = form.querySelector('.remain');
+
+      function rebuild(){
+        const allowed = allowedEnvs(acctSel.value);
+        const ids = new Set(allowed.map(e => String(e.id)));
+
+        // quick
+        if (quickSel){
+          const prev = quickSel.value;
+          quickSel.innerHTML = '';
+          const opt = document.createElement('option');
+          opt.value = '__SPLIT__';
+          opt.textContent = (type==='expense') ? 'Split Across Multiple Envelopes' : 'Manual split across multiple envelopes';
+          quickSel.appendChild(opt);
+          allowed.forEach(e => {
+            const o = document.createElement('option');
+            o.value = e.id; o.textContent = e.name; quickSel.appendChild(o);
+          });
+          quickSel.value = ids.has(prev) ? prev : '__SPLIT__';
+        }
+
+        // remainder
+        if (remainder){
+          const prev = remainder.value;
+          remainder.innerHTML = '';
+          const o0 = document.createElement('option'); o0.value=''; o0.textContent='-- choose envelope --';
+          remainder.appendChild(o0);
+          allowed.forEach(e => { const o=document.createElement('option'); o.value=e.id; o.textContent=e.name; remainder.appendChild(o); });
+          if ([...remainder.options].some(o => o.value===prev)) remainder.value = prev;
+        }
+
+        // rows
+        rows.forEach(row => {
+          const eid = row.getAttribute('data-eid');
+          const show = ids.has(String(eid));
+          row.style.display = show ? '' : 'none';
+          const inp = row.querySelector('.env-input');
+          if (!show) { if (inp){ inp.value=''; inp.disabled = true; } }
+        });
+      }
+
+      function applyMode(){
+        const isSplit = (quickSel && quickSel.value === '__SPLIT__');
+        if (modeInput) modeInput.value = isSplit ? 'split' : 'single';
+        if (details) details.open = isSplit;
+        rows.forEach(row => {
+          const shown = row.style.display !== 'none';
+          const inp = row.querySelector('.env-input');
+          if (inp) inp.disabled = !(isSplit && shown);
+        });
+        if (remainder){
+          remainder.disabled = !isSplit;
+          if (!isSplit) remainder.value = '';
+        }
+        updateRemain();
+      }
+
+      function target(){ 
+        const c = centsFrom(amtInput); 
+        return (type==='expense') ? Math.abs(c) : Math.max(0, c);
+      }
+
+      function splitValues(){
+        const values = [];
+        rows.forEach(row => {
+          const inp = row.querySelector('.env-input');
+          if (!inp || inp.disabled) return;
+          const v = centsFrom(inp);
+          if (v !== 0) values.push(v);
+        });
+        return values;
+      }
+
+      function splitRemaining(){
+        const values = splitValues();
+        if (type === 'expense' && values.some(v => v < 0)) {
+          return -target() - values.reduce((a, v) => a + v, 0);
+        }
+        const total = values.reduce((a, v) => a + (type === 'expense' ? Math.abs(v) : v), 0);
+        return target() - total;
+      }
+
+      function updateRemain(){
+        if (!remainLbl) return;
+        const isSplit = (modeInput?.value === 'split');
+        let rem = isSplit ? splitRemaining() : target();
+        if (remainder && String(remainder.value || '').trim() !== '' && rem !== 0) rem = 0;
+        remainLbl.textContent = fmtMoney(rem);
+      }
+
+      form.addEventListener('change', (e) => {
+        if (e.target === acctSel) { rebuild(); applyMode(); }
+        if (e.target === quickSel){ applyMode(); }
+        if (e.target === remainder){ updateRemain(); }
+      });
+      form.addEventListener('input', (e) => {
+        if (e.target === amtInput || e.target.classList.contains('env-input')) updateRemain();
+      });
+      if (details) details.addEventListener('toggle', updateRemain);
+      
+      function showFormError(form, msg){
+        let bar = form.querySelector('.modal-body .alert[data-role="form-error"]');
+        if (!bar){
+          bar = document.createElement('div');
+          bar.className = 'alert alert-danger py-2';
+          bar.setAttribute('data-role','form-error');
+          const body = form.querySelector('.modal-body') || form;
+          body.prepend(bar);
+        }
+        bar.textContent = msg;
+      }
+
+      form.addEventListener('submit', (e) => {
+        const isSplit = (quickSel && quickSel.value === '__SPLIT__');
+        if (modeInput) modeInput.value = isSplit ? 'split' : 'single';
+
+        if (!isSplit) return; // single-envelope mode: let server validate
+
+        const rem = splitRemaining();
+        const hasRemainder = remainder && String(remainder.value || '').trim() !== '';
+
+        // If the amounts don’t match and no remainder will fill the signed delta,
+        // keep the modal open and show a clear message.
+        if (rem !== 0 && !hasRemainder){
+          e.preventDefault();
+          const kind = (type === 'expense') ? 'expense' : 'income';
+          showFormError(form, `The ${kind} split has ${(rem/100).toFixed(2)} remaining. Choose a remainder envelope or adjust the amounts.`);
+          // Focus the first offending input for quick correction
+          const first = rows.find(r => {
+            const inp = r.querySelector('.env-input');
+            return inp && !inp.disabled && centsFrom(inp) > 0;
+          });
+          (first?.querySelector('.env-input') || rows[0]?.querySelector('.env-input'))?.focus();
+        }
+      });
+
+      // Clear the error message as the user edits values
+      form.addEventListener('input', (e) => {
+        if (e.target === amtInput || e.target.classList.contains('env-input')){
+          const bar = form.querySelector('.modal-body .alert[data-role="form-error"]');
+          if (bar) bar.remove();
+        }
+      });
+
+      // init
+      rebuild();
+      applyMode();
+    }
+
+    // ---- Transfer configurator (multi-split both sides) ----
+    function configureTransferForm(form){
+      if (!form) return;
+      if (form.querySelector(".env-scope")) return; // shared envelope selector owns filtering, remaining, and remainder display
+      const fromAcc   = form.querySelector('select[name="from_account_id"]');
+      const toAcc     = form.querySelector('select[name="to_account_id"]');
+      const amtInput  = form.querySelector('input[name="amount"]');
+
+      const fromScope = form.querySelector('[data-scope-id="xfer-from"]') || form;
+      const toScope   = form.querySelector('[data-scope-id="xfer-to"]')   || form;
+      const fromRows  = Array.from(fromScope.querySelectorAll('.env-row'));
+      const toRows    = Array.from(toScope.querySelectorAll('.env-row'));
+
+      const fromRem   = fromScope.querySelector('[data-remainder-select]');
+      const toRem     = toScope.querySelector('[data-remainder-select]');
+      const lblFromEl = fromScope.querySelector('[data-remaining-amount]');
+      const lblToEl   = toScope.querySelector('[data-remaining-amount]');
+
+      function rebuildSide(accSel, rows, remSel){
+        const allowed = allowedEnvs(accSel.value);
+        const ids = new Set(allowed.map(e => String(e.id)));
+
+        // rows
+        rows.forEach(row => {
+          const eid = row.getAttribute('data-envelope-id');
+          const show = ids.has(String(eid));
+          row.style.display = show ? '' : 'none';
+          const inp = row.querySelector('.env-input');
+          if (!inp) return;
+          if (show) inp.disabled = false;
+          else { inp.value=''; inp.disabled = true; }
+        });
+
+        // remainder
+        if (remSel){
+          const prev = remSel.value;
+          remSel.innerHTML = '';
+          const o0 = document.createElement('option'); o0.value=''; o0.textContent='-- choose envelope --';
+          remSel.appendChild(o0);
+          allowed.forEach(e => { const o=document.createElement('option'); o.value=e.id; o.textContent=e.name; remSel.appendChild(o); });
+          remSel.disabled = false;
+          if ([...remSel.options].some(o => o.value===prev)) remSel.value = prev;
+        }
+      }
+
+      function target(){ return Math.max(0, centsFrom(amtInput)); }
+
+      function signedValues(rows){
+        return rows.map(r => {
+          const inp = r.querySelector('.env-input');
+          if (!inp || inp.disabled) return 0;
+          return centsFrom(inp);
+        }).filter(v => v !== 0);
+      }
+
+      function remainingForSide(rows, signedTarget, remSel){
+        const values = signedValues(rows);
+        const legacyOutflow = signedTarget < 0 && !values.some(v => v < 0);
+        const entered = legacyOutflow
+          ? values.reduce((a, v) => a + Math.abs(v), 0)
+          : values.reduce((a, v) => a + v, 0);
+        const targetValue = legacyOutflow ? Math.abs(signedTarget) : signedTarget;
+        let remaining = targetValue - entered;
+        if (remSel && String(remSel.value || '').trim() !== '' && remaining !== 0) remaining = 0;
+        return remaining;
+      }
+
+      function updateRemain(){
+        const tgt = target();
+        if (lblFromEl) lblFromEl.textContent = fmtMoney(remainingForSide(fromRows, -tgt, fromRem));
+        if (lblToEl)   lblToEl.textContent   = fmtMoney(remainingForSide(toRows,    tgt, toRem));
+      }
+
+      fromAcc.addEventListener('change', () => { rebuildSide(fromAcc, fromRows, fromRem); updateRemain(); });
+      toAcc.addEventListener('change',   () => { rebuildSide(toAcc,   toRows,   toRem);   updateRemain(); });
+      form.addEventListener('input', e => {
+        if (e.target === amtInput || e.target.classList.contains('env-input')) updateRemain();
+      });
+      if (fromRem) fromRem.addEventListener('change', updateRemain);
+      if (toRem) toRem.addEventListener('change', updateRemain);
+
+      // Populate account selects when a page renders the modal shell without options.
+      if (!fromAcc.options.length || !toAcc.options.length){
+        (() => {
+          const el = document.getElementById('ACCOUNTS_JSON');
+          if (!el) return;
+          let ACCOUNTS = [];
+          try { ACCOUNTS = JSON.parse(el.textContent || '[]'); } catch { ACCOUNTS = []; }
+
+          ACCOUNTS.forEach(a => {
+            if (fromAcc && !fromAcc.querySelector(`option[value="${a.id}"]`)) {
+              const o = document.createElement('option');
+              o.value = String(a.id);
+              o.textContent = a.name;
+              fromAcc.appendChild(o);
+            }
+            if (toAcc && !toAcc.querySelector(`option[value="${a.id}"]`)) {
+              const o = document.createElement('option');
+              o.value = String(a.id);
+              o.textContent = a.name;
+              toAcc.appendChild(o);
+            }
+          });
+        })();
+      }
+
+      // init
+      rebuildSide(fromAcc, fromRows, fromRem);
+      rebuildSide(toAcc,   toRows,   toRem);
+      updateRemain();
+
+      // Client-side guard: warn if from/to totals don’t match target
+      function showTransferError(msg){
+        let bar = form.querySelector('.modal-body .alert[data-role="form-error"]');
+        if (!bar){
+          bar = document.createElement('div');
+          bar.className = 'alert alert-danger py-2';
+          bar.setAttribute('data-role','form-error');
+          const body = form.querySelector('.modal-body') || form;
+          body.prepend(bar);
+        }
+        bar.textContent = msg;
+      }
+
+      form.addEventListener('submit', (e) => {
+        const tgt   = target();
+        const sFrom = sumSide(fromRows);
+        const sTo   = sumSide(toRows);
+
+        if (tgt <= 0){
+          e.preventDefault();
+          showTransferError("Enter a transfer Amount greater than 0.00.");
+          (amtInput)?.focus();
+          return;
+        }
+
+        // NEW: allow mismatch on a side if a 'Remainder to' envelope is selected there
+        const hasFromRemainder = !!(fromRem && fromRem.value);
+        const hasToRemainder   = !!(toRem && toRem.value);
+
+        if (sFrom !== tgt && !hasFromRemainder){
+          e.preventDefault();
+          showTransferError(
+            `Source envelope amounts (${(sFrom/100).toFixed(2)}) must equal the transfer amount ` +
+            `(${(tgt/100).toFixed(2)}). Either enter the full split or pick a "Remainder to" envelope.`
+          );
+          const first = fromRows.find(r => {
+            const inp = r.querySelector('.env-input');
+            return inp && !inp.disabled && (inp.value || '').trim() !== '';
+          });
+          (first?.querySelector('.env-input') || fromRows[0]?.querySelector('.env-input'))?.focus();
+          return;
+        }
+
+        if (sTo !== tgt && !hasToRemainder){
+          e.preventDefault();
+          showTransferError(
+            `Destination envelope amounts (${(sTo/100).toFixed(2)}) must equal the transfer amount ` +
+            `(${(tgt/100).toFixed(2)}). Either enter the full split or pick a "Remainder to" envelope.`
+          );
+          const first = toRows.find(r => {
+            const inp = r.querySelector('.env-input');
+            return inp && !inp.disabled && (inp.value || '').trim() !== '';
+          });
+          (first?.querySelector('.env-input') || toRows[0]?.querySelector('.env-input'))?.focus();
+          return;
+        }
+      });
+
+      // Clear the inline error as the user edits
+      form.addEventListener('input', (e) => {
+        if (e.target.classList.contains('env-input') || e.target === amtInput){
+          const bar = form.querySelector('.modal-body .alert[data-role="form-error"]');
+          if (bar) bar.remove();
+        }
+      });
+    }
+    
+    function setRuleFormValue(form, name, value) {
+      const field = form?.querySelector(`[name="${name}"]`);
+      if (field) field.value = value == null ? '' : String(value);
+    }
+
+    function currentSingleEnvelope(sourceForm, type) {
+      const prefix = type === 'income' ? 'income' : 'expense';
+      const single = sourceForm.querySelector(`select[name="${prefix}_single"]`);
+      if (single && single.value) {
+        return {
+          id: single.value,
+          label: single.selectedOptions?.[0]?.textContent || `Envelope #${single.value}`,
+        };
+      }
+      const selected = Array.from(sourceForm.querySelectorAll('.env-scope input.env-input'))
+        .filter(input => {
+          if (input.disabled) return false;
+          const value = Number.parseFloat(String(input.value || '').trim());
+          return Number.isFinite(value) && value !== 0;
+        });
+      if (selected.length !== 1) return { id: '', label: 'No envelope action' };
+      const match = selected[0].name.match(/_(\d+)$/);
+      const row = selected[0].closest('[data-env-row]');
+      return {
+        id: match ? match[1] : '',
+        label: row?.getAttribute('data-envelope-name') || (match ? `Envelope #${match[1]}` : 'No envelope action'),
+      };
+    }
+
+    function centsFromMoneyValue(value) {
+      const numeric = Number.parseFloat(String(value || '').trim());
+      if (!Number.isFinite(numeric)) return 0;
+      return Math.round(Math.abs(numeric) * 100);
+    }
+
+    function transferRuleSplits(sourceForm, patterns) {
+      const splits = [];
+      sourceForm.querySelectorAll('input.env-input').forEach(input => {
+        if (input.disabled) return;
+        const name = input.getAttribute('name') || '';
+        const match = patterns.map(pattern => name.match(pattern)).find(Boolean);
+        if (!match) return;
+        const amount = centsFromMoneyValue(input.value);
+        if (!amount) return;
+        splits.push({ envelope_id: Number.parseInt(match[1], 10), amount_cents: amount });
+      });
+      return splits;
+    }
+
+    function transferRuleRemainder(sourceForm, names) {
+      for (const name of names) {
+        const value = Number.parseInt(sourceForm.querySelector(`[name="${name}"]`)?.value || '0', 10) || 0;
+        if (value) return value;
+      }
+      return null;
+    }
+
+    function selectedOptionText(sourceForm, name) {
+      const select = sourceForm.querySelector(`[name="${name}"]`);
+      return select?.selectedOptions?.[0]?.textContent?.trim() || '';
+    }
+
+    function prefillTransferCreateRuleModal(sourceForm, ruleForm) {
+      const fromAccountId = sourceForm.querySelector('[name="from_account_id"]')?.value || '';
+      const toAccountId = sourceForm.querySelector('[name="to_account_id"]')?.value || '';
+      const amount = sourceForm.querySelector('[name="amount"]')?.value || '';
+      const memo = sourceForm.querySelector('[name="memo"]')?.value || '';
+      const transferPayload = {
+        transaction_type: 'expense',
+        other_account_id: Number.parseInt(toAccountId, 10) || null,
+        current_account_splits: transferRuleSplits(sourceForm, [/^transfer_from_(\d+)$/, /^from_amount_(\d+)$/]),
+        current_account_remainder_envelope_id: transferRuleRemainder(sourceForm, ['from_remainder']),
+        other_account_splits: transferRuleSplits(sourceForm, [/^transfer_to_(\d+)$/, /^to_amount_(\d+)$/]),
+        other_account_remainder_envelope_id: transferRuleRemainder(sourceForm, ['to_remainder']),
+        target_amount_cents: centsFromMoneyValue(amount),
+      };
+      const fromName = selectedOptionText(sourceForm, 'from_account_id');
+      const toName = selectedOptionText(sourceForm, 'to_account_id');
+      const label = memo || [fromName, toName].filter(Boolean).join(' to ') || 'transfer';
+
+      ruleForm.reset();
+      setRuleFormValue(ruleForm, 'name', `Transfer: ${label}`.slice(0, 120));
+      setRuleFormValue(ruleForm, 'priority', '100');
+      setRuleFormValue(ruleForm, 'account_scope', fromAccountId ? 'account' : 'global');
+      setRuleFormValue(ruleForm, 'account_id', fromAccountId);
+      setRuleFormValue(ruleForm, 'direction', 'expense');
+      setRuleFormValue(ruleForm, 'match_field', 'memo');
+      setRuleFormValue(ruleForm, 'match_operator', 'contains');
+      setRuleFormValue(ruleForm, 'match_value', memo || label);
+      setRuleFormValue(ruleForm, 'amount_min', amount);
+      setRuleFormValue(ruleForm, 'amount_max', amount);
+      setRuleFormValue(ruleForm, 'action_payee', toName);
+      setRuleFormValue(ruleForm, 'action_memo', memo);
+      setRuleFormValue(ruleForm, 'action_transaction_type', '');
+      setRuleFormValue(ruleForm, 'action_envelope_id', '');
+      setRuleFormValue(ruleForm, 'action_split_remainder_json', '');
+      setRuleFormValue(ruleForm, 'action_transfer_json', JSON.stringify(transferPayload));
+      setRuleFormValue(ruleForm, 'action_manual_match_json', '');
+      const envelopeLabel = ruleForm.querySelector('[data-rule-field="action_envelope_label"]');
+      if (envelopeLabel) envelopeLabel.value = 'Transfer action';
+      const enabled = ruleForm.querySelector('[name="enabled"]');
+      if (enabled) enabled.checked = true;
+    }
+
+    function prefillCreateRuleModal(trigger) {
+      const selector = trigger?.getAttribute('data-create-rule-from-form');
+      const sourceForm = selector ? document.querySelector(selector) : null;
+      const ruleForm = document.getElementById('createImportRuleForm');
+      if (!sourceForm || !ruleForm) return;
+
+      if (sourceForm.dataset.type === 'transfer') {
+        prefillTransferCreateRuleModal(sourceForm, ruleForm);
+        return;
+      }
+
+      const type = sourceForm.dataset.type === 'income' ? 'income' : 'expense';
+      const payee = sourceForm.querySelector('[name="payee"]')?.value || '';
+      const memo = sourceForm.querySelector('[name="memo"]')?.value || '';
+      const amount = sourceForm.querySelector('[name="amount"]')?.value || '';
+      const accountId = sourceForm.querySelector('[name="account_id"]')?.value || '';
+      const matchText = payee || memo;
+      const label = matchText ? `${type === 'income' ? 'Income' : 'Expense'}: ${matchText}` : `${type === 'income' ? 'Income' : 'Expense'} rule`;
+
+      ruleForm.reset();
+      setRuleFormValue(ruleForm, 'name', label.slice(0, 120));
+      setRuleFormValue(ruleForm, 'priority', '100');
+      setRuleFormValue(ruleForm, 'account_scope', accountId ? 'account' : 'global');
+      setRuleFormValue(ruleForm, 'account_id', accountId);
+      setRuleFormValue(ruleForm, 'direction', type);
+      setRuleFormValue(ruleForm, 'match_field', payee ? 'payee' : 'memo');
+      setRuleFormValue(ruleForm, 'match_operator', 'contains');
+      setRuleFormValue(ruleForm, 'match_value', matchText);
+      setRuleFormValue(ruleForm, 'amount_min', amount);
+      setRuleFormValue(ruleForm, 'amount_max', amount);
+      setRuleFormValue(ruleForm, 'action_payee', payee);
+      setRuleFormValue(ruleForm, 'action_memo', memo);
+      setRuleFormValue(ruleForm, 'action_transaction_type', type);
+      setRuleFormValue(ruleForm, 'action_split_remainder_json', '');
+      setRuleFormValue(ruleForm, 'action_transfer_json', '');
+      setRuleFormValue(ruleForm, 'action_manual_match_json', '');
+      const envelope = currentSingleEnvelope(sourceForm, type);
+      setRuleFormValue(ruleForm, 'action_envelope_id', envelope.id);
+      const envelopeLabel = ruleForm.querySelector('[data-rule-field="action_envelope_label"]');
+      if (envelopeLabel) envelopeLabel.value = envelope.id ? envelope.label : 'No envelope action';
+      const enabled = ruleForm.querySelector('[name="enabled"]');
+      if (enabled) enabled.checked = true;
+    }
+
+    document.addEventListener('click', (e) => {
+      const trigger = e.target.closest('[data-create-rule-from-form]');
+      if (!trigger) return;
+      prefillCreateRuleModal(trigger);
+    });
+
+    document.addEventListener('shown.bs.modal', (e) => {
+      // Configure any split form in this modal (new expense/income) once
+      e.target.querySelectorAll('form[data-type="expense"], form[data-type="income"]').forEach(form => {
+        if (!form.dataset.configured){
+          configureSplitForm(form);
+          form.dataset.configured = '1';
+        }
+      });
+
+      // Configure the transfer form in this modal once
+      const tForm = e.target.querySelector('form[data-type="transfer"]');
+      if (tForm && !tForm.dataset.configured){
+        configureTransferForm(tForm);
+        tForm.dataset.configured = '1';
+      }
+    });
+
+  })();  
+  </script>
+
+  <script src="{{ url_for('static', filename='app_envelope_filter.js', v='20260705-transfer-balances-init') }}"></script>
+</body>
+</html>

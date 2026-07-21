@@ -1,0 +1,271 @@
+from __future__ import annotations
+
+from datetime import datetime
+import re
+
+from ..db import ensure_payee_learning_schema
+
+
+def ensure_payee_learning_tables(db):
+    """Create/migrate payee-learning tables through the central schema helper.
+
+    Preserves the legacy stats-table rebuild behavior for old databases without
+    account_id by rebuilding from transactions + transaction_splits.
+    """
+    ensure_payee_learning_schema(db)
+
+
+# --- payee text normalization + similarity (fuzzy-ish, Amazon-friendly) ---
+
+_payee_norm_re_digits = re.compile(r"\d+")
+_payee_norm_re_nonalpha = re.compile(r"[^a-z]+")
+
+
+def _normalize_payee_text(s: str) -> str:
+    """
+    Lowercase, strip digits (e.g. order numbers), and keep only letters as words.
+
+    Example:
+      "AMZN Mktp US*123-4567890-12345" -> "amzn mktp us"
+    """
+    s = (s or "").lower()
+    s = _payee_norm_re_digits.sub(" ", s)
+    s = _payee_norm_re_nonalpha.sub(" ", s)
+    s = " ".join(s.split())
+    return s
+
+
+def _similarity_norm(a_norm: str, b_norm: str) -> float:
+    """Simple similarity on already-normalized strings."""
+    if not a_norm or not b_norm:
+        return 0.0
+    if a_norm == b_norm:
+        return 1.0
+    if a_norm in b_norm or b_norm in a_norm:
+        # substring match (e.g. "amzn mktp us" vs "amzn mktp")
+        return 0.9
+    set_a = set(a_norm.split())
+    set_b = set(b_norm.split())
+    if not set_a or not set_b:
+        return 0.0
+    inter = len(set_a & set_b)
+    union = len(set_a | set_b)
+    return inter / union
+
+# --- Tunables --------------------------------------------------------------
+# These control how aggressive the envelope auto-suggestions are during import.
+#
+# If you want *more* suggestions, lower PAYEE_SIMILARITY_MIN and relax the
+# amount guards. If you want *fewer* (more conservative) suggestions, raise
+# them.
+
+# Minimum string similarity (0..1) between the imported payee and a learned/
+# known payee label before we even consider suggesting an envelope.
+PAYEE_SIMILARITY_MIN = 0.25
+
+# Amount guardrails (in cents). Used only as a sanity check when we have
+# limited history for the payee.
+PAYEE_AMOUNT_GUARD_ABS_CENTS = 2000 
+PAYEE_AMOUNT_GUARD_REL = 2.0 
+
+def load_payee_model(db, *, account_id: int | None):
+    """Load payee alias + per-account envelope stats for suggestion.
+
+    account_id:
+      - If provided, stats are filtered to that account (recommended).
+      - If None, loads stats across all accounts.
+    """
+    aliases = []
+    for row in db.execute("SELECT raw_payee, normalized_payee, use_count FROM payee_aliases"):
+        raw = row["raw_payee"] or ""
+        aliases.append(
+            {
+                "raw": raw,
+                "norm_raw": _normalize_payee_text(raw),
+                "normalized": row["normalized_payee"] or "",
+                "use_count": int(row["use_count"] or 0),
+            }
+        )
+
+    stats = {}
+    if account_id is None:
+        stats_rows = db.execute(
+            "SELECT normalized_payee, envelope_id, tx_count, total_amount_cents "
+            "FROM payee_envelope_stats"
+        )
+    else:
+        stats_rows = db.execute(
+            "SELECT normalized_payee, envelope_id, tx_count, total_amount_cents "
+            "FROM payee_envelope_stats WHERE account_id = ?",
+            (int(account_id),),
+        )
+
+    for row in stats_rows:
+        norm = row["normalized_payee"] or ""
+        env_id = int(row["envelope_id"])
+        stats.setdefault(norm, {})[env_id] = {
+            "tx_count": int(row["tx_count"] or 0),
+            "total_amount_cents": int(row["total_amount_cents"] or 0),
+        }
+
+    # ------------------------------------------------------------------
+    # Bootstrap: many users already have a history of categorized expenses,
+    # but payee_aliases might be mostly empty if the learning feature was
+    # enabled recently.
+    #
+    # To avoid "only a few payees get predicted", treat every payee label
+    # present in payee_envelope_stats as an implicit alias:
+    # raw_payee == normalized_payee
+    # This lets the fuzzy matcher consider existing payees without requiring
+    # the user to re-import/learn them one-by-one.
+    # ------------------------------------------------------------------
+    seen = {(a["raw"], a["normalized"]) for a in aliases}
+    for payee_label, env_map in stats.items():
+        key = (payee_label, payee_label)
+        if key in seen:
+            continue
+        aliases.append(
+            {
+                "raw": payee_label,
+                "norm_raw": _normalize_payee_text(payee_label),
+                "normalized": payee_label,
+                "use_count": sum(int(st.get("tx_count") or 0) for st in (env_map or {}).values()),
+            }
+        )
+        seen.add(key)
+    return {"aliases": aliases, "stats": stats}
+
+
+
+def record_payee_example(db, *, account_id: int, orig_payee, final_payee, amount_cents, splits):
+    """
+    Learn from a single imported transaction (expense only).
+
+    - orig_payee: original payee from bank file
+    - final_payee: what the user actually saved as Payee
+    - amount_cents: signed transaction amount (negative for expense)
+    - splits: list of {'envelope_id', 'amount_cents'} covering the full amount
+    """
+    # Only learn from expenses
+    if amount_cents >= 0:
+        return
+
+    orig = (orig_payee or "").strip()
+    norm = (final_payee or "").strip()
+    if not orig or not norm:
+        return
+
+    now = datetime.utcnow().isoformat(timespec="seconds")
+
+    # Record alias mapping original → final payee
+    db.execute(
+        """
+        INSERT INTO payee_aliases (raw_payee, normalized_payee, use_count, last_used)
+        VALUES (?, ?, 1, ?)
+        ON CONFLICT(raw_payee, normalized_payee)
+        DO UPDATE SET
+          use_count = use_count + 1,
+          last_used = excluded.last_used
+        """,
+        (orig, norm, now),
+    )
+
+    # Record envelope usage stats for this payee (PER ACCOUNT)
+    if not splits:
+        return
+
+    for part in splits:
+        env_id = int(part.get("envelope_id") or 0)
+        cents = abs(int(part.get("amount_cents") or 0))
+        if env_id <= 0 or cents <= 0:
+            continue
+
+        db.execute(
+            """
+            INSERT INTO payee_envelope_stats (
+              account_id, normalized_payee, envelope_id, tx_count, total_amount_cents
+            )
+            VALUES (?, ?, ?, 1, ?)
+            ON CONFLICT(account_id, normalized_payee, envelope_id)
+            DO UPDATE SET
+              tx_count = tx_count + 1,
+              total_amount_cents = total_amount_cents + excluded.total_amount_cents
+            """,
+            (int(account_id), norm, env_id, cents),
+        )
+
+
+
+def suggest_envelope_for_expense(model, raw_payee, amount_cents):
+    """
+    Given the original payee text and positive amount_cents, return an envelope_id to suggest or None.
+    """
+    raw = (raw_payee or "").strip()
+    if not raw or amount_cents <= 0:
+        return None
+
+    norm_raw = _normalize_payee_text(raw)
+    if not norm_raw:
+        return None
+
+    aliases = model.get("aliases") or []
+    stats_by_norm = model.get("stats") or {}
+
+    candidates = []
+
+    for alias in aliases:
+        norm_alias = alias["norm_raw"]
+        sim = _similarity_norm(norm_raw, norm_alias)
+        if sim < PAYEE_SIMILARITY_MIN:
+            continue # not similar enough
+
+        norm_name = alias["normalized"]
+        env_stats = stats_by_norm.get(norm_name)
+        if not env_stats:
+            continue
+
+        for env_id, st in env_stats.items():
+            tx_count = st["tx_count"]
+            total_amt = st["total_amount_cents"]
+            if tx_count <= 0 or total_amt <= 0:
+                continue
+
+            avg_amt = total_amt / tx_count
+            distance = abs(amount_cents - avg_amt)
+
+            candidates.append(
+                {
+                    "envelope_id": env_id,
+                    "normalized": norm_name,
+                    "distance": distance,
+                    "tx_count": tx_count,
+                    "sim": sim,
+                }
+            )
+
+    if not candidates:
+        return None
+
+    # Prefer:
+    #  - smallest distance to average amount,
+    #  - then most frequent,
+    #  - then best string similarity
+    candidates.sort(key=lambda c: (-c["sim"], -c["tx_count"], c["distance"]))
+    best = candidates[0]
+
+    # Safety: if it's wildly off, don't suggest anything
+    diff = best["distance"]
+    if amount_cents > 0:
+        rel = diff / amount_cents
+
+        # With only one example, be more cautious.
+        if best["tx_count"] <= 1:
+            if diff > 500 and rel > 0.75: # > $5 and >75% off
+                return None
+        else:
+            if diff > PAYEE_AMOUNT_GUARD_ABS_CENTS and rel > PAYEE_AMOUNT_GUARD_REL:
+                return None
+    return best["envelope_id"]
+
+
+

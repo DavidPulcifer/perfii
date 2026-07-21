@@ -1,0 +1,101 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4>Import .QFX/.OFX/.CSV</h4>
+<form id="importUploadForm" method="post" action="{{ url_for('imports.upload_and_review') }}" enctype="multipart/form-data" data-detect-account-url="{{ url_for('imports.detect_account') }}">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="statementFile">Statement file</label>
+      <input class="form-control" id="statementFile" type="file" name="statement" accept=".qfx,.ofx,.csv" required>
+    </div>
+    <div class="col-12 col-lg-5">
+      <label class="form-label" for="uploadAccount">Account</label>
+      <select class="form-select" id="uploadAccount" name="account_id" data-auto-value="auto" required>
+        <option value="auto" {% if not selected_account_id %}selected{% endif %}>Auto-detect from file</option>
+        {% for account in accounts %}
+          <option value="{{ account.id }}" {% if selected_account_id and account.id == selected_account_id %}selected{% endif %}>{{ account.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-2 d-grid">
+      <button class="btn btn-primary" id="importUploadButton">Upload</button>
+    </div>
+  </div>
+</form>
+
+<script>
+(() => {
+  const form = document.getElementById('importUploadForm');
+  if (!form) return;
+  const fileInput = document.getElementById('statementFile');
+  const accountSelect = document.getElementById('uploadAccount');
+  const uploadButton = document.getElementById('importUploadButton');
+  const detectUrl = form.dataset.detectAccountUrl;
+  const autoValue = accountSelect?.dataset.autoValue || 'auto';
+
+  function allowUpload() {
+    accountSelect?.setCustomValidity('');
+    if (uploadButton) uploadButton.disabled = false;
+  }
+
+  function requireAccount() {
+    if (accountSelect?.value === autoValue) {
+      accountSelect.setCustomValidity('Choose the account for this statement.');
+      if (uploadButton) uploadButton.disabled = true;
+    }
+  }
+
+  async function detectAccountForFile() {
+    const file = fileInput?.files?.[0];
+    if (!file || !detectUrl || !accountSelect) {
+      allowUpload();
+      return;
+    }
+
+    const currentSelection = accountSelect.value;
+    const previousDetection = accountSelect.dataset.detectedValue || '';
+    if (currentSelection && currentSelection !== autoValue && currentSelection !== previousDetection) {
+      allowUpload();
+      return;
+    }
+
+    accountSelect.value = autoValue;
+    accountSelect.dataset.detectedValue = '';
+    if (uploadButton) uploadButton.disabled = true;
+
+    const formData = new FormData();
+    formData.append('statement', file);
+    try {
+      const response = await fetch(detectUrl, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' },
+        body: formData
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) {
+        throw new Error(data.message || `HTTP ${response.status}`);
+      }
+      if (data.account_id) {
+        accountSelect.value = String(data.account_id);
+        accountSelect.dataset.detectedValue = String(data.account_id);
+        allowUpload();
+      } else {
+        requireAccount();
+      }
+    } catch (error) {
+      console.warn('account detection failed:', error);
+      requireAccount();
+    }
+  }
+
+  fileInput?.addEventListener('change', detectAccountForFile);
+  accountSelect?.addEventListener('change', () => {
+    if (accountSelect.value === autoValue) {
+      detectAccountForFile();
+    } else {
+      accountSelect.dataset.detectedValue = '';
+      allowUpload();
+    }
+  });
+})();
+</script>
+{% endblock %}

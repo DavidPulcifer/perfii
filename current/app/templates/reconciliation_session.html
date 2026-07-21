@@ -1,0 +1,179 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <div>
+    <h4 class="mb-1">Reconcile {{ account.name }}</h4>
+    <span class="badge text-bg-{% if session.status == 'closed' %}success{% elif session.status == 'void' %}secondary{% else %}primary{% endif %}">{{ session.status }}</span>
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reconciliation.history', account_id=account.id) }}">History</a>
+</div>
+
+<form method="post" action="{{ url_for('reconciliation.save_session', session_id=session.id) }}"
+      data-reconciliation-session
+      data-starting-cents="{{ summary.starting_balance_cents }}"
+      data-statement-cents="{{ summary.statement_balance_cents }}">
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-md-3">
+      <label class="form-label">Statement date</label>
+      <input class="form-control" type="date" name="statement_date" value="{{ session.statement_date }}" required data-reconciliation-statement-date-input>
+    </div>
+    <div class="col-12 col-md-3">
+      <label class="form-label">Statement balance</label>
+      <input class="form-control" name="statement_balance" value="{{ session.statement_balance_cents|cents_to_dollars }}" required data-reconciliation-statement-input>
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label">Label</label>
+      <input class="form-control" name="label" value="{{ session.label or '' }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label">Note</label>
+      <textarea class="form-control" name="note" rows="2">{{ session.note or '' }}</textarea>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-2"><div class="text-muted small">Starting</div><div class="fw-semibold" data-reconciliation-starting>{{ summary.starting_balance_cents|money }}</div></div>
+    <div class="col-6 col-md-2"><div class="text-muted small">Selected</div><div class="fw-semibold" data-reconciliation-selected>{{ summary.selected_total_cents|money }}</div></div>
+    <div class="col-6 col-md-2"><div class="text-muted small">Calculated</div><div class="fw-semibold" data-reconciliation-calculated>{{ summary.calculated_balance_cents|money }}</div></div>
+    <div class="col-6 col-md-2"><div class="text-muted small">Statement</div><div class="fw-semibold" data-reconciliation-statement>{{ summary.statement_balance_cents|money }}</div></div>
+    <div class="col-6 col-md-2"><div class="text-muted small">Difference</div><div class="fw-semibold {% if summary.difference_cents != 0 %}text-danger{% else %}text-success{% endif %}" data-reconciliation-difference>{{ summary.difference_cents|money }}</div></div>
+    <div class="col-6 col-md-2"><div class="text-muted small">Items</div><div class="fw-semibold" data-reconciliation-items>{{ summary.item_count }}</div></div>
+  </div>
+
+  <div class="d-flex flex-column flex-md-row justify-content-between gap-2 mb-2">
+    <div>
+      {% if session.status in ['open', 'reopened'] and transactions %}
+        <button class="btn btn-sm btn-outline-primary" type="button" data-reconciliation-check-all>
+          Check all through statement date
+        </button>
+      {% endif %}
+    </div>
+    <div class="d-flex flex-wrap gap-2 justify-content-md-end">
+      {% if session.status in ['open', 'reopened'] %}
+        <button class="btn btn-primary">Save progress</button>
+        <button class="btn btn-success" formaction="{{ url_for('reconciliation.close_session', session_id=session.id) }}">Save and close if balanced</button>
+      {% endif %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('accounts.account_dashboard', account_id=account.id) }}">Done</a>
+    </div>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm" data-checkbox-range-scope>
+      <thead>
+        <tr>
+          <th>
+            <input class="form-check-input" type="checkbox" title="Check/uncheck all" data-reconciliation-select-all>
+          </th>
+          <th>Date</th><th>Payee</th><th>Memo</th><th>Type</th><th class="text-end">Amount</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for t in transactions %}
+        <tr>
+          <td><input type="checkbox" name="transaction_id" value="{{ t.id }}" data-range-checkbox data-amount-cents="{{ t.amount_cents }}" data-posted-at="{{ t.posted_at }}" {% if t.id in selected_ids %}checked{% endif %}></td>
+          <td>{{ t.posted_at }}</td>
+          <td>{{ t.payee }}</td>
+          <td>{{ t.memo }}</td>
+          <td>{{ t.ttype }}</td>
+          <td class="text-end {% if t.amount_cents < 0 %}text-danger{% else %}text-success{% endif %}">{{ t.amount_cents|money }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="text-muted">No unreconciled transactions available.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+</form>
+
+<script>
+(() => {
+  const form = document.querySelector("[data-reconciliation-session]");
+  if (!form) return;
+
+  const money = (cents) => {
+    const sign = cents < 0 ? "-" : "";
+    const abs = Math.abs(Number(cents) || 0);
+    return `${sign}$${Math.floor(abs / 100).toLocaleString()}.${String(abs % 100).padStart(2, "0")}`;
+  };
+
+  const parseMoneyToCents = (value) => {
+    const raw = String(value || "").trim();
+    const match = raw.match(/^\s*([+-]?)\$?\s*([0-9]{1,3}(?:,[0-9]{3})*|[0-9]+)?(?:\.([0-9]{1,2}))?\s*$/);
+    if (!match) return Number(form.dataset.statementCents) || 0;
+    const sign = match[1] === "-" ? -1 : 1;
+    const whole = (match[2] || "0").replace(/,/g, "");
+    const cents = `${match[3] || "0"}0`.slice(0, 2);
+    return sign * ((Number(whole) * 100) + Number(cents));
+  };
+
+  const setText = (selector, value) => {
+    const el = form.querySelector(selector);
+    if (el) el.textContent = value;
+    return el;
+  };
+
+  const transactionCheckboxes = () => Array.from(form.querySelectorAll('input[name="transaction_id"]'));
+
+  const updateMasterCheckbox = () => {
+    const master = form.querySelector("[data-reconciliation-select-all]");
+    if (!master) return;
+    const boxes = transactionCheckboxes();
+    const checkedCount = boxes.filter((input) => input.checked).length;
+    master.checked = boxes.length > 0 && checkedCount === boxes.length;
+    master.indeterminate = checkedCount > 0 && checkedCount < boxes.length;
+  };
+
+  const updateReconciliationSummary = () => {
+    const startingCents = Number(form.dataset.startingCents) || 0;
+    const statementInput = form.querySelector("[data-reconciliation-statement-input]");
+    const statementCents = parseMoneyToCents(statementInput ? statementInput.value : form.dataset.statementCents);
+    const checked = transactionCheckboxes().filter((input) => input.checked);
+    const selectedCents = checked.reduce((total, input) => total + (Number(input.dataset.amountCents) || 0), 0);
+    const calculatedCents = startingCents + selectedCents;
+    const differenceCents = statementCents - calculatedCents;
+
+    setText("[data-reconciliation-selected]", money(selectedCents));
+    setText("[data-reconciliation-calculated]", money(calculatedCents));
+    setText("[data-reconciliation-statement]", money(statementCents));
+    setText("[data-reconciliation-items]", String(checked.length));
+
+    const differenceEl = setText("[data-reconciliation-difference]", money(differenceCents));
+    if (differenceEl) {
+      differenceEl.classList.toggle("text-danger", differenceCents !== 0);
+      differenceEl.classList.toggle("text-success", differenceCents === 0);
+    }
+    updateMasterCheckbox();
+  };
+
+  form.addEventListener("change", (event) => {
+    if (event.target.matches("[data-reconciliation-select-all]")) {
+      transactionCheckboxes().forEach((input) => {
+        input.checked = event.target.checked;
+      });
+      updateReconciliationSummary();
+      return;
+    }
+    if (event.target.matches('input[name="transaction_id"], [data-reconciliation-statement-input]')) {
+      updateReconciliationSummary();
+    }
+  });
+  form.addEventListener("input", (event) => {
+    if (event.target.matches("[data-reconciliation-statement-input]")) {
+      updateReconciliationSummary();
+    }
+  });
+  form.addEventListener("click", (event) => {
+    if (!event.target.matches("[data-reconciliation-check-all]")) return;
+    const statementDate = form.querySelector("[data-reconciliation-statement-date-input]")?.value || "";
+    transactionCheckboxes().forEach((input) => {
+      if (statementDate && String(input.dataset.postedAt || "") > statementDate) return;
+      input.checked = true;
+    });
+    updateReconciliationSummary();
+  });
+
+  updateReconciliationSummary();
+})();
+</script>
+{% endblock %}

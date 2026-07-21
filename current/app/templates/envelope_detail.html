@@ -1,0 +1,108 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+  <div>
+    <h4 class="mb-1">
+      {{ envelope.name }}
+      {% if envelope.archived_at %}
+        <span class="badge text-bg-secondary align-middle">Archived</span>
+      {% endif %}
+    </h4>
+    {% if envelope_group %}
+      <div class="text-muted small">Master detail across {{ envelope_group|length }} active envelope{% if envelope_group|length != 1 %}s{% endif %} named “{{ envelope.name }}”.</div>
+    {% elif envelope.locked_account_id %}
+      <div class="text-muted small">Locked account {{ accounts_map.get(envelope.locked_account_id, '#' ~ (envelope.locked_account_id|string)) }}</div>
+    {% else %}
+      <div class="text-muted small">Unlocked envelope</div>
+    {% endif %}
+  </div>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('envelopes.list_') }}">Manage Envelopes</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Current total</div>
+        <div class="fs-4 fw-semibold {% if current_total_cents < 0 %}text-danger{% endif %}">
+          {{ current_total_cents|money }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Amounts in</div>
+        <div class="fs-5 fw-semibold">{{ amounts_in_cents|money }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Amounts out</div>
+        <div class="fs-5 fw-semibold">{{ amounts_out_cents|money }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-semibold">Envelope activity</div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Date</th>
+          {% if envelope_group %}<th>Envelope</th>{% endif %}
+          <th>Account</th>
+          <th>Type</th>
+          <th>Payee / memo</th>
+          <th class="text-end">Split amount</th>
+          <th class="text-end">Running balance</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for row in activity %}
+        <tr>
+          <td class="text-nowrap">{{ row.posted_at }}</td>
+          {% if envelope_group %}<td>{{ row.envelope_name }}</td>{% endif %}
+          <td>{{ row.account_name }}</td>
+          <td>{{ row.ttype }}</td>
+          <td>
+            {% if row.payee %}
+              <div>{{ row.payee }}</div>
+            {% endif %}
+            {% if row.memo %}
+              <div class="text-muted small">{{ row.memo }}</div>
+            {% endif %}
+            {% if not row.payee and not row.memo %}
+              <span class="text-muted">No payee or memo</span>
+            {% endif %}
+          </td>
+          <td class="text-end {% if row.split_amount_cents < 0 %}text-danger{% endif %}">
+            {{ row.split_amount_cents|money }}
+          </td>
+          <td class="text-end fw-semibold {% if row.running_balance_cents < 0 %}text-danger{% endif %}">
+            {{ row.running_balance_cents|money }}
+          </td>
+          <td class="text-end">
+            {% if row.ttype in ('transfer_in', 'transfer_out') and row.xfer_pair_id %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.transfer_edit', tx_id=row.transaction_id) }}">Edit</a>
+            {% else %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.transaction_edit', tx_id=row.transaction_id) }}">Edit</a>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr>
+          <td colspan="{% if envelope_group %}8{% else %}7{% endif %}" class="text-muted">No transactions affect this envelope yet.</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

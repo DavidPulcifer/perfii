@@ -1,0 +1,635 @@
+{% extends "layout.html" %}
+{% macro transaction_pager(position, show_disabled=False) -%}
+  {% if show_disabled or prev_url or next_url %}
+    <div class="d-flex justify-content-between align-items-center my-2 transaction-pager" data-pagination-position="{{ position }}">
+      <div class="text-muted small">
+        {% if total %}
+          Showing {{ ((page-1)*per_page)+1 }}-{{ [page*per_page, total]|min }} of {{ total }}
+        {% else %}
+          No results
+        {% endif %}
+      </div>
+      <div class="btn-group">
+        <a class="btn btn-sm btn-outline-secondary {% if not prev_url %}disabled{% endif %}"
+          href="{{ prev_url or '#' }}">Previous</a>
+        <a class="btn btn-sm btn-outline-secondary {% if not next_url %}disabled{% endif %}"
+          href="{{ next_url or '#' }}">Next</a>
+      </div>
+    </div>
+  {% endif %}
+{%- endmacro %}
+{% block content %}
+
+<style>
+  /* Small, self-contained scroll area just for the envelope lists */
+  #newExpenseModal .env-list,
+  #newIncomeModal  .env-list {
+    max-height: 16rem;   /* ~256px; tweak to taste (eg. 14rem, 18rem) */
+    overflow: auto;
+  }
+
+  /* allow payee to wrap; keep memo compact with a preview/reveal */
+  td.memo-cell {
+    position: relative;
+    min-width: 10rem;
+    max-width: 16rem;
+    white-space: normal;
+  }
+  td.payee-cell { white-space: normal; }
+
+  .memo-preview-button {
+    display: inline-block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--bs-secondary-color);
+    vertical-align: top;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
+  .memo-preview-button:hover,
+  .memo-preview-button:focus {
+    color: var(--bs-body-color);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    outline: none;
+  }
+  .memo-reveal-popover {
+    display: none;
+    position: fixed;
+    z-index: 1080;
+    min-width: 16rem;
+    max-width: min(32rem, 80vw);
+    padding: .5rem .75rem;
+    color: var(--bs-body-color);
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    border-radius: .5rem;
+    box-shadow: 0 .5rem 1rem rgba(0, 0, 0, .15);
+    white-space: pre-wrap;
+  }
+  .memo-reveal-popover.is-visible {
+    display: block;
+  }
+
+  /* optional: avoid vertically centering everything */
+  table.table td, table.table th { vertical-align: top; }
+
+  /* Wider layout for transactions table */
+  .transaction-table-wrapper {
+    overflow-x: auto;          /* allow horizontal scroll if needed */
+  }
+
+  table.transactions-table {
+    min-width: 1100px;         /* let columns breathe without shrinking others */
+  }
+
+  /* Wider Date column */
+  table.transactions-table th:nth-child(2),
+  table.transactions-table td:nth-child(2) {
+    min-width: 8rem;
+    white-space: nowrap;       /* keep dates on one line */
+  }
+
+  /* Wider Account column */
+  table.transactions-table th:nth-child(3),
+  table.transactions-table td:nth-child(3) {
+    min-width: 12rem;
+  }
+</style>
+
+<h1 class="h2 d-flex align-items-center justify-content-between">
+  <span>Transactions</span>  
+</h1>
+
+<form class="row g-2 mb-3" method="get" action="{{ url_for('transactions.list_') }}">
+  <div class="col-12 col-md-3">
+    <label class="form-label mb-0" for="transactionAccountFilter">Account</label>
+    <select class="form-select" id="transactionAccountFilter" name="account_id" multiple size="4">
+      <option value="">All accounts</option>
+      {% for a in accounts %}
+        <option value="{{ a.id }}" {% if a.id in f_account_ids %}selected{% endif %}>{{ a.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-6 col-md-2">
+    <label class="form-label mb-0" for="transactionDateFrom">From</label>
+    <input class="form-control" id="transactionDateFrom" type="date" name="date_from" value="{{ f_date_from or '' }}">
+  </div>
+  <div class="col-6 col-md-2">
+    <label class="form-label mb-0" for="transactionDateTo">To</label>
+    <input class="form-control" id="transactionDateTo" type="date" name="date_to" value="{{ f_date_to or '' }}">
+  </div>
+  <div class="col-12 col-md-2">
+    <label class="form-label mb-0" for="transactionTypeFilter">Type</label>
+    <select class="form-select" id="transactionTypeFilter" name="ttype" multiple size="6">
+      <option value="">All Transactions</option>
+      <option value="income"        {% if 'income' in f_ttypes %}selected{% endif %}>Income</option>
+      <option value="expense"       {% if 'expense' in f_ttypes %}selected{% endif %}>Expense</option>
+      <option value="transfer"      {% if 'transfer' in f_ttypes %}selected{% endif %}>Transfers</option>
+      <option value="transfer_in"   {% if 'transfer_in' in f_ttypes %}selected{% endif %}>Transfer In</option>
+      <option value="transfer_out"  {% if 'transfer_out' in f_ttypes %}selected{% endif %}>Transfer Out</option>
+      <option value="allocation"    {% if 'allocation' in f_ttypes %}selected{% endif %}>Allocation</option>
+    </select>
+  </div>
+
+  <div class="col-6 col-md-1">
+    <label class="form-label mb-0" for="transactionAmountExact">Exact</label>
+    <input class="form-control" id="transactionAmountExact" type="number" step="0.01" name="amount_exact" value="{{ f_amt_exact or '' }}" placeholder="0.00" data-amount-exact>
+  </div>
+  <div class="col-6 col-md-1">
+    <label class="form-label mb-0" for="transactionAmountMin">Min</label>
+    <input class="form-control" id="transactionAmountMin" type="number" step="0.01" name="amount_min" value="{{ f_amt_min or '' }}" placeholder="0.00" data-amount-range>
+  </div>
+  <div class="col-6 col-md-1">
+    <label class="form-label mb-0" for="transactionAmountMax">Max</label>
+    <input class="form-control" id="transactionAmountMax" type="number" step="0.01" name="amount_max" value="{{ f_amt_max or '' }}" placeholder="0.00" data-amount-range>
+  </div>
+  <div class="col-12 col-md-3">
+    <label class="form-label mb-0" for="transactionEnvelopeFilter">Envelope</label>
+    <select class="form-select" id="transactionEnvelopeFilter" name="envelope_id" multiple size="4">
+      <option value="">Any envelope</option>
+      {% for e in envelopes %}
+        <option value="{{ e.id }}" {% if e.id in f_envelope_ids %}selected{% endif %}>
+          {{ e.name }}{% if e.locked_account_id %} · {{ accounts_map.get(e.locked_account_id) }}{% endif %}
+        </option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-12 col-md-3">
+    <label class="form-label mb-0" for="transactionPayeeFilter">Payee contains</label>
+    <input class="form-control" id="transactionPayeeFilter" type="text" name="q_payee" value="{{ f_q_payee or '' }}" placeholder="text…">
+  </div>
+  <div class="col-12 col-md-3">
+    <label class="form-label mb-0" for="transactionMemoFilter">Memo contains</label>
+    <input class="form-control" id="transactionMemoFilter" type="text" name="q_memo" value="{{ f_q_memo or '' }}" placeholder="text…">
+  </div>
+  <div class="col-6 col-md-2 d-flex align-items-end">
+    <div class="form-check">
+      <input class="form-check-input" type="checkbox" id="absChk" name="abs" value="1" {% if f_abs!='0' %}checked{% endif %}>
+      <label class="form-check-label" for="absChk">Use absolute amounts</label>
+    </div>
+  </div>
+  <div class="col-6 col-md-2">
+    <label class="form-label mb-0" for="transactionReconciliationFilter">Reconciliation</label>
+    <select class="form-select" id="transactionReconciliationFilter" name="reconciliation">
+      <option value="all" {% if f_reconciliation == 'all' %}selected{% endif %}>All</option>
+      <option value="unreconciled" {% if f_reconciliation == 'unreconciled' %}selected{% endif %}>Unreconciled</option>
+      <option value="reconciled" {% if f_reconciliation == 'reconciled' %}selected{% endif %}>Reconciled</option>
+    </select>
+  </div>
+  <div class="col-6 col-md-2 d-flex align-items-end gap-2">
+    <button class="btn btn-primary w-100">Filter</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('transactions.list_', account_id=acc_id) }}">Reset</a>
+  </div>
+  <div class="col-6 col-md-2">
+    <label class="form-label mb-0" for="transactionPageSize">Per page</label>
+    <select class="form-select" id="transactionPageSize" name="per_page" onchange="this.form.submit()">
+      {% for n in per_page_options %}
+        <option value="{{ n }}" {% if per_page == n %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+    <input type="hidden" name="page" value="1">
+  </div>
+</form>
+
+<script>
+  (() => {
+    const exact = document.querySelector('[data-amount-exact]');
+    const rangeInputs = Array.from(document.querySelectorAll('[data-amount-range]'));
+    if (!exact || rangeInputs.length === 0) return;
+
+    function syncAmountRangeState(){
+      const hasExact = (exact.value || '').trim() !== '';
+      rangeInputs.forEach((input) => {
+        input.disabled = hasExact;
+      });
+    }
+
+    exact.addEventListener('input', syncAmountRangeState);
+    syncAmountRangeState();
+  })();
+</script>
+
+<form id="bulkForm" method="post" action="{{ url_for('transactions.transactions_bulk') }}">
+  <input type="hidden" name="return_to" value="{{ current_path() }}">
+</form>
+
+<div class="d-flex align-items-center gap-2 mb-2">
+  <select class="form-select form-select-sm" name="action" form="bulkForm" style="max-width: 220px;" aria-label="Bulk transaction action">
+    <option value="">Bulk action…</option>
+    <option value="delete">Delete</option>
+  </select>
+  <input type="hidden" name="account_id" value="{{ acc_id or '' }}" form="bulkForm">
+  <button type="submit" class="btn btn-sm btn-outline-primary" form="bulkForm"
+          onclick="return confirmBulk()">Apply</button>
+  <span class="text-muted small" id="selCount"></span>
+</div>
+
+<hr>
+{{ transaction_pager('top') }}
+<div class="transaction-table-wrapper">
+  <table class="table table-sm transactions-table" data-checkbox-range-scope>
+    <thead>
+      <tr>
+        <th><input type="checkbox" id="checkAll" title="Select all"></th>
+        <th>Date</th><th>Account</th><th>Payee</th><th>Memo</th>
+        <th>Type</th><th>Amount</th><th>Envelope</th><th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% set list_ = txs or tx or rows or [] %}
+    {% for t in list_ %}
+      <tr>
+        <td><input type="checkbox" class="row-check" name="tx_id" value="{{ t.id }}" form="bulkForm" data-range-checkbox></td>
+        <td>{{ t.posted_at }}</td>
+        <td>{{ t.account_name }}</td>
+        <td class="payee-cell">{{ t.payee }}</td>
+        <td class="memo-cell">
+          {% set memo_text = t.memo or '' %}
+          {% if memo_text %}
+            <button type="button"
+                    class="memo-preview-button"
+                    data-memo-full="{{ memo_text }}"
+                    aria-label="Show full memo">
+              {{ memo_text|truncate(48, true, '…') }}
+            </button>
+          {% else %}
+            <span class="text-muted">—</span>
+          {% endif %}
+        </td>
+        <td>{{ t.ttype }}</td>
+        <td class="text-end {% if t.amount_cents<0 %}text-danger{% else %}text-success{% endif %}">{{ t.amount_cents|money }}</td>
+        <td>
+          {% set parts = splits.get(t.id, []) %}
+          {% if not parts %}
+            <span class="badge text-bg-secondary">Unassigned</span>
+          {% elif parts|length == 1 %}
+            <span class="badge text-bg-secondary">{{ parts[0].envelope_name }}</span>
+          {% else %}
+            <button type="button" class="btn btn-sm btn-outline-primary"
+                    data-bs-toggle="modal" data-bs-target="#splitsModal{{ t.id }}">View envelopes ({{ parts|length }})</button>
+            <div class="modal fade" id="splitsModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-sm modal-fullscreen-sm-down">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h6 class="modal-title">Envelopes — {{ t.payee or t.ttype }} • {{ t.amount_cents|money }}</h6>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <ul class="list-group list-group-flush">
+                      {% for s in parts %}
+                        <li class="list-group-item d-flex justify-content-between">
+                          <span>{{ s.envelope_name }}</span>
+                          <span class="{% if s.amount_cents<0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ s.amount_cents|money }}
+                          </span>
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  </div>
+                  <div class="modal-footer">
+                    {% if t.ttype in ['transfer_in','transfer_out'] %}
+                      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.transfer_edit', tx_id=t.id, return_to=current_path()) }}">Edit</a>
+                    {% else %}
+                      <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.transaction_edit', tx_id=t.id, return_to=current_path()) }}">Edit</a>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+        </td>
+        <td>
+          {% if t.is_reconciled %}
+            <span class="badge text-bg-success">Reconciled</span>
+          {% endif %}
+          {% if t.ttype in ['transfer_in','transfer_out'] %}
+            <a class="btn btn-sm btn-outline-primary"
+              href="{{ url_for('transactions.transfer_edit', tx_id=t.id, return_to=current_path()) }}">
+              Edit Transfer
+            </a>
+          {% else %}
+            <a class="btn btn-sm btn-outline-primary"
+              href="{{ url_for('transactions.transaction_edit', tx_id=t.id, return_to=current_path()) }}">
+              Edit
+            </a>
+          {% endif %}
+
+          <form method="post" action="{{ url_for('transactions.transaction_delete', tx_id=t.id) }}" class="d-inline"
+                onsubmit="return confirm('Delete this transaction? This also removes its splits.')">
+            <input type="hidden" name="return_to" value="{{ current_path() }}">
+            <button class="btn btn-sm btn-outline-danger">Delete</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="text-muted">No transactions found.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div id="memoRevealPopover" class="memo-reveal-popover" role="tooltip" aria-hidden="true"></div>
+{{ transaction_pager('bottom', show_disabled=True) }}
+
+<form id="hiddenPost" method="post" style="display:none;"></form>
+
+<script id="envelopesJSON" type="application/json">{{ envelopes_json | default([]) | tojson }}</script>
+<script id="balancesJSON"  type="application/json">{{ balances_json  | default([]) | tojson }}</script>
+<script>
+  // Memo reveal popover: use fixed positioning so scrollable table wrappers do not clip it.
+  const memoReveal = document.getElementById('memoRevealPopover');
+  let memoPinned = false;
+
+  function positionMemoReveal(anchor){
+    if (!memoReveal || !anchor) return;
+    const rect = anchor.getBoundingClientRect();
+    const margin = 8;
+    memoReveal.style.left = `${margin}px`;
+    memoReveal.style.top = `${margin}px`;
+    memoReveal.classList.add('is-visible');
+    const popRect = memoReveal.getBoundingClientRect();
+    const left = Math.min(
+      Math.max(rect.left, margin),
+      Math.max(margin, window.innerWidth - popRect.width - margin)
+    );
+    const below = rect.bottom + margin;
+    const above = rect.top - popRect.height - margin;
+    const top = below + popRect.height <= window.innerHeight - margin
+      ? below
+      : Math.max(margin, above);
+    memoReveal.style.left = `${left}px`;
+    memoReveal.style.top = `${top}px`;
+  }
+
+  function showMemoReveal(anchor, pinned=false){
+    if (!memoReveal || !anchor) return;
+    const memo = anchor.dataset.memoFull || anchor.textContent.trim();
+    if (!memo) return;
+    memoPinned = pinned;
+    memoReveal.textContent = memo;
+    memoReveal.setAttribute('aria-hidden', 'false');
+    positionMemoReveal(anchor);
+  }
+
+  function hideMemoReveal(){
+    if (!memoReveal || memoPinned) return;
+    memoReveal.classList.remove('is-visible');
+    memoReveal.setAttribute('aria-hidden', 'true');
+  }
+
+  function closeMemoReveal(){
+    if (!memoReveal) return;
+    memoPinned = false;
+    memoReveal.classList.remove('is-visible');
+    memoReveal.setAttribute('aria-hidden', 'true');
+  }
+
+  document.querySelectorAll('.memo-preview-button').forEach(button => {
+    button.addEventListener('pointerenter', () => showMemoReveal(button));
+    button.addEventListener('pointerleave', hideMemoReveal);
+    button.addEventListener('focus', () => showMemoReveal(button));
+    button.addEventListener('blur', hideMemoReveal);
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const alreadyPinned = memoPinned && memoReveal?.classList.contains('is-visible') && memoReveal.textContent === (button.dataset.memoFull || button.textContent.trim());
+      if (alreadyPinned) {
+        closeMemoReveal();
+      } else {
+        showMemoReveal(button, true);
+      }
+    });
+  });
+  document.addEventListener('click', closeMemoReveal);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMemoReveal();
+  });
+  window.addEventListener('scroll', closeMemoReveal, true);
+  window.addEventListener('resize', closeMemoReveal);
+
+  // Bulk actions UI
+  const checkAll = document.getElementById('checkAll');
+  const checks = () => Array.from(document.querySelectorAll('.row-check'));
+  const selCount = document.getElementById('selCount');
+  function updateCount(){ const n = checks().filter(c => c.checked).length; selCount.textContent = n ? `${n} selected` : ''; }
+  if (checkAll) checkAll.addEventListener('change', () => { checks().forEach(c => c.checked = checkAll.checked); updateCount(); });
+  checks().forEach(c => c.addEventListener('change', updateCount));
+  function confirmBulk(){
+    const action = document.querySelector('select[name="action"]').value;
+    const any = checks().some(c => c.checked);
+    if (!any) { alert('Select at least one transaction.'); return false; }
+    if (action === 'delete') return confirm('Delete selected transactions? This also removes their splits.');
+    if (!action) { alert('Choose a bulk action.'); return false; }
+    return true;
+  }
+  updateCount();
+</script>
+
+<script>
+(function(){
+  // Envelope filtering + Remaining math for the two modals
+  const envs = JSON.parse(document.getElementById('envelopesJSON').textContent);
+  const balances = JSON.parse(document.getElementById('balancesJSON').textContent);
+
+  function allowedEnvsForAccount(accId){
+    const s = String(accId || '');
+    return envs.filter(e => e.locked_account_id === null || String(e.locked_account_id) === s);
+  }
+  function centsFrom(val){
+    const v = (typeof val === 'string' ? val : (val?.value ?? '')).trim();
+    if (!v) return 0;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.round(n*100) : 0;
+  }
+  function money(c){
+    const m = Math.abs(c)/100;
+    return (c<0?'-$':'$') + m.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+  function acctBalances(accId){ return balances[String(accId)] || {}; }
+
+  function configureForm(form){
+    if (!form) return;
+    const type        = form.dataset.type; // 'expense' | 'income'
+    const acctSel     = form.querySelector('select[name="account_id"]');
+    const amtInput    = form.querySelector('input[name="amount"]');
+    const quickSel    = form.querySelector('select.env-quick');           // '__SPLIT__' or envelope id
+    const remainder   = form.querySelector('select.remainder-select');
+    const rows        = Array.from(form.querySelectorAll('.env-row'));
+    const scope       = form.querySelector('.split-scope');
+    const modeInput   = form.querySelector('input[name="mode"]');
+    const splitDetails= form.querySelector('details.split-details');
+
+    function rebuildQuickAndRemainder(){
+      const accId = acctSel ? acctSel.value : '';
+      const allowed = allowedEnvsForAccount(accId);
+      const allowedIds = new Set(allowed.map(e => String(e.id)));
+
+      // Quick assign: first option is the split sentinel
+      if (quickSel){
+        const prev = quickSel.value;
+        quickSel.innerHTML = '';
+        const optSplit = document.createElement('option');
+        optSplit.value = '__SPLIT__';
+        optSplit.textContent = (type === 'expense')
+          ? 'Split Across Multiple Envelopes'
+          : 'Manual split across multiple envelopes';
+        quickSel.appendChild(optSplit);
+        allowed.forEach(e => {
+          const o = document.createElement('option');
+          o.value = e.id; o.textContent = e.name; quickSel.appendChild(o);
+        });
+        quickSel.value = allowedIds.has(prev) ? prev : '__SPLIT__';
+      }
+
+      // Remainder select mirrors allowed envelopes
+      if (remainder){
+        const prev = remainder.value;
+        remainder.innerHTML = '';
+        const o0 = document.createElement('option');
+        o0.value = ''; o0.textContent = '-- choose envelope --';
+        remainder.appendChild(o0);
+        allowed.forEach(e => {
+          const o = document.createElement('option');
+          o.value = e.id; o.textContent = e.name; remainder.appendChild(o);
+        });
+        if ([...remainder.options].some(o => o.value === prev)) remainder.value = prev;
+      }
+
+      // Show/hide split rows per account
+      rows.forEach(row => {
+        const eid = row.getAttribute('data-eid');
+        const show = allowedIds.has(String(eid));
+        row.style.display = show ? '' : 'none';
+        const inp = row.querySelector('.env-input');
+        const def = row.querySelector('.env-default');
+        if (!show){
+          if (inp) { inp.value = ''; inp.disabled = true; }
+          if (def) def.disabled = true;
+        }
+      });
+    }
+
+    function applyModeFromQuick(){
+      const isSplit = (quickSel && quickSel.value === '__SPLIT__');
+      if (modeInput) modeInput.value = isSplit ? 'split' : 'single';
+
+      // Toggle details open/closed to match mode
+      if (splitDetails) splitDetails.open = isSplit;
+
+      // Enable/disable inputs based on mode
+      rows.forEach(row => {
+        const shown = row.style.display !== 'none';
+        const inp = row.querySelector('.env-input');
+        const def = row.querySelector('.env-default');
+        if (!inp) return;
+        if (isSplit && shown){
+          inp.disabled = false;
+          if (def) def.disabled = false;
+        } else {
+          inp.disabled = true;
+          if (def) def.disabled = true;
+        }
+      });
+
+      // Remainder select usable only in split
+      if (remainder){
+        remainder.disabled = !isSplit;
+        if (!isSplit) remainder.value = '';
+      }
+
+      updateRemaining();
+    }
+
+    function targetCents(){
+      const c = centsFrom(amtInput);
+      return (type === 'expense') ? Math.abs(c) : Math.max(0, c);
+    }
+
+    function updateRemaining(){
+      if (!scope) return;
+      const isSplit = (modeInput?.value === 'split');
+      let total = 0;
+      let signedExpenseRemaining = null;
+
+      if (type === 'expense'){
+        if (isSplit){
+          const values = [];
+          rows.forEach(row => {
+            const inp = row.querySelector('.env-input');
+            if (!inp || inp.disabled) return;
+            const v = centsFrom(inp);
+            if (v !== 0) values.push(v);
+          });
+          const hasNegative = values.some(v => v < 0);
+          if (hasNegative) {
+            total = values.reduce((a, v) => a + v, 0);
+            signedExpenseRemaining = -targetCents() - total;
+          } else {
+            total = values.reduce((a, v) => a + Math.abs(v), 0);
+          }
+        }
+      } else {
+        // income: Add/Set support
+        const bal = acctBalances(acctSel ? acctSel.value : '');
+        rows.forEach(row => {
+          const inp = row.querySelector('.env-input');
+          if (!inp || inp.disabled) return;
+          const modeSel = row.querySelector('.env-mode');
+          const eid = row.getAttribute('data-eid');
+          const v = centsFrom(inp);
+          const m = modeSel ? modeSel.value : 'add';
+          if (m === 'set'){
+            const cur = bal[String(eid)] || 0;
+            total += (v - cur);
+          } else {
+            total += v;
+          }
+        });
+      }
+
+      let remain = signedExpenseRemaining === null ? targetCents() - total : signedExpenseRemaining;
+      if (remainder && String(remainder.value || '').trim() !== '' && remain !== 0) remain = 0;
+      const label = scope.querySelector('.remain');
+      if (label) label.textContent = money(remain);
+    }
+
+    // Sync on changes
+    form.addEventListener('change', e => {
+      if (e.target === acctSel){ rebuildQuickAndRemainder(); applyModeFromQuick(); }
+      if (e.target === quickSel){ applyModeFromQuick(); }
+      if (e.target === remainder){ updateRemaining(); }
+    });
+    form.addEventListener('input', e => {
+      if (e.target === amtInput || e.target.classList.contains('env-input')) updateRemaining();
+    });
+
+    // Keep remaining up to date if user toggles the <details>
+    if (splitDetails){
+      splitDetails.addEventListener('toggle', updateRemaining);
+    }
+
+    // Ensure mode correctness on submit (server also safeguards)
+    form.addEventListener('submit', () => {
+      const isSplit = (quickSel && quickSel.value === '__SPLIT__');
+      if (modeInput) modeInput.value = isSplit ? 'split' : 'single';
+    });
+
+    // Initial
+    rebuildQuickAndRemainder();
+    applyModeFromQuick();
+  }
+
+  // Configure forms on modal open
+  document.addEventListener('shown.bs.modal', (e) => {
+    if (e.target.id === 'newExpenseModal') configureForm(document.getElementById('expenseForm'));
+    if (e.target.id === 'newIncomeModal')  configureForm(document.getElementById('incomeForm'));
+  });
+})();
+</script>
+
+{% endblock %}

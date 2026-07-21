@@ -1,0 +1,140 @@
+{# ---------------------------------------------------------------------------
+  _envelope_selector.html — Reusable envelope selector with balances + Remainder + Defaults
+  - Distinctive, scannable rows
+  - Filters by account via app_envelope_filter.js
+  - "Remaining" readout tied to a total input (optional)
+  - "Remainder to" select (optional)
+  - Income-only extras: Add/Set mode per row, "Default: $X" note, Default button
+----------------------------------------------------------------------------- #}
+
+{% set _envelopes         = envelopes %}
+{% set _values            = env_selector_values    or {} %}
+{% set _modes             = env_selector_modes     or {} %}
+{% set _show_mode         = env_selector_show_mode or False %}
+{% set _show_default_buttons = env_selector_show_default_buttons if env_selector_show_default_buttons is defined else _show_mode %}
+{% set _prefix            = env_selector_input_prefix %}
+{% set _mid               = env_selector_input_mid if env_selector_input_mid is defined else '' %}
+{% set _scope             = env_selector_scope_id %}
+{% set _account_selector  = env_selector_account_selector %}
+{% set _enable_remainder  = env_selector_enable_remainder or False %}
+{% set _remainder_name    = env_selector_remainder_name or (_prefix ~ '_remainder_envelope_id') %}
+{% set _remainder_value   = env_selector_remainder_value %}
+{% set _total_selector    = env_selector_total_selector or '' %}
+{% set _remainder_target_sign = env_selector_remainder_target_sign if env_selector_remainder_target_sign is defined else 1 %}
+{% set _remainder_legacy_outflow = env_selector_remainder_legacy_outflow if env_selector_remainder_legacy_outflow is defined else False %}
+{% set _blank_zero_values = env_selector_blank_zero_values if env_selector_blank_zero_values is defined else False %}
+{% set _validation_label = env_selector_validation_label if env_selector_validation_label is defined else '' %}
+{% set _validation_toggle = env_selector_validation_toggle if env_selector_validation_toggle is defined else '' %}
+{% set _show_zero_balance = env_selector_show_zero_balance if env_selector_show_zero_balance is defined else False %}
+
+<div class="env-scope border rounded p-2"
+     data-scope-id="{{ _scope }}"
+     data-account-selector="{{ _account_selector }}"
+     data-total-selector="{{ _total_selector }}"
+     data-validation-label="{{ _validation_label }}"
+     data-validation-toggle="{{ _validation_toggle }}"
+     data-remainder-target-sign="{{ _remainder_target_sign }}"
+     data-remainder-legacy-outflow="{{ 1 if _remainder_legacy_outflow else 0 }}">
+
+  {% if _total_selector %}
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="small text-muted">Enter signed envelope amounts; positives add, negatives subtract.</div>
+      <div class="env-remaining">
+        <small class="text-muted">Remaining</small>
+        <strong class="ms-2" data-remaining-amount>$0.00</strong>
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="vstack gap-2" data-env-list style="max-height: 260px; overflow:auto;">
+    {% for e in _envelopes %}
+      {% set def_cents = (e.default_amount_cents or 0) %}
+      <div class="env-row"
+           data-env-row
+           data-locked-account-id="{{ e.locked_account_id if e.locked_account_id else '' }}"
+           data-envelope-id="{{ e.id }}"
+           data-envelope-name="{{ e.name }}"
+           data-default-cents="{{ def_cents }}">
+
+        <div class="env-main {% if _show_mode %}env-showmode{% endif %}">
+          <div class="env-name">
+            {{ e.name }}
+            {% if e.archived_at %}
+              <span class="badge text-bg-secondary ms-1">Archived</span>
+            {% endif %}
+
+            {# Balance placeholder; JS fills per selected account. #}
+            <div class="env-meta" data-balance-wrap data-show-zero-balance="{{ 1 if _show_zero_balance else 0 }}" hidden>
+              Balance:
+              <span data-env-balance data-envelope-id="{{ e.id }}">$0.00</span>
+            </div>
+
+            {% if _show_default_buttons and def_cents != 0 %}
+              <div class="env-meta">
+                Default: <span>{{ def_cents | money }}</span>
+              </div>
+            {% endif %}
+          </div>
+
+          {% if _show_mode %}
+            <div>
+              <select
+                class="form-select form-select-sm env-mode"
+                name="{{ _prefix }}_mode_{{ e.id }}"
+                style="width: 6.5rem;"
+                aria-label="Income mode for {{ e.name }}">
+                {% set mode = (_modes.get(e.id) or 'add') %}
+                <option value="add" {{ 'selected' if mode == 'add' else '' }}>Add</option>
+                <option value="set" {{ 'selected' if mode == 'set' else '' }}>Set</option>
+              </select>
+            </div>
+          {% endif %}
+
+          <div class="d-flex align-items-center gap-2">
+            {% if _show_default_buttons and def_cents != 0 %}
+              <button type="button"
+                      class="btn btn-outline-secondary btn-sm env-default-btn"
+                      title="Set to default for {{ e.name }}"
+                      data-env-default>
+                Default
+              </button>
+            {% endif %}
+
+            <div class="input-group input-group-sm env-amt">
+              <span class="input-group-text">$</span>
+              <input
+                type="number"
+                inputmode="decimal"
+                step="0.01"
+                class="form-control text-end env-input"
+                name="{{ _prefix }}{% if _mid %}_{{ _mid }}{% endif %}_{{ e.id }}"
+                value="{% if _blank_zero_values and not _values.get(e.id) %}{% else %}{{ (_values.get(e.id, 0) or 0) | cents_to_dollars }}{% endif %}"
+                placeholder="0.00"
+                aria-label="Amount for {{ e.name }}">
+            </div>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if _enable_remainder %}
+    <div class="mt-2">
+      <div class="d-flex flex-column flex-sm-row align-items-sm-end gap-2">
+        <div class="flex-grow-1">
+          <label class="form-label small mb-1">Remainder to</label>
+          <select class="form-select form-select-sm" name="{{ _remainder_name }}" data-remainder-select>
+            <option value="">-- none --</option>
+          </select>
+        </div>
+        <div class="small text-sm-end" data-remainder-amount-wrap>
+          <div class="text-muted">Remainder amount</div>
+          <strong class="text-muted" data-remainder-amount>No remainder assigned</strong>
+        </div>
+      </div>
+      {% if _remainder_value %}
+        <input type="hidden" data-remainder-initial="{{ _remainder_value }}" value="{{ _remainder_value }}">
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

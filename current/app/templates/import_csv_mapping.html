@@ -1,0 +1,70 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4 class="mb-3">Assign CSV Columns</h4>
+<p class="text-body-secondary mb-3">
+  {{ csv_mapping.message }}{% if filename %} File: <strong>{{ filename }}</strong>.{% endif %}
+</p>
+{% if error_message %}
+  <div class="alert alert-warning" role="alert">{{ error_message }}</div>
+{% endif %}
+{% if csv_mapping.warnings %}
+  <div class="alert alert-warning" role="alert">
+    <ul class="mb-0">
+      {% for warning in csv_mapping.warnings %}<li>{{ warning }}</li>{% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<form id="csvColumnMappingForm" method="post" action="{{ url_for('imports.upload_and_review') }}">
+  <input type="hidden" name="csv_upload_token" value="{{ csv_upload_token }}">
+  <input type="hidden" name="account_id" value="{{ selected_account_id or 'auto' }}">
+
+  {% macro mapping_select(name, label, required=false) -%}
+    {% set selected = csv_mapping.suggested_mapping.get(name) %}
+    <div class="col-12 col-lg-6">
+      <label class="form-label" for="{{ name }}Col">{{ label }}{% if required %} <span class="text-danger">*</span>{% endif %}</label>
+      <select class="form-select" id="{{ name }}Col" name="csv_{{ name }}_col" {% if required %}required{% endif %}>
+        <option value="">Not used</option>
+        {% for header in csv_mapping.headers %}
+          <option value="{{ header }}" {% if selected == header %}selected{% endif %}>{{ header }}</option>
+        {% endfor %}
+      </select>
+      {% if selected and csv_mapping.samples.get(selected) %}
+        <div class="form-text">Samples: {{ csv_mapping.samples.get(selected)|join(' · ') }}</div>
+      {% endif %}
+    </div>
+  {%- endmacro %}
+
+  <div class="row g-3">
+    {{ mapping_select('date', 'Date', true) }}
+    {{ mapping_select('payee', 'Payee / Description', true) }}
+    {{ mapping_select('amount', 'Signed Amount') }}
+    {{ mapping_select('debit', 'Debit / Withdrawal') }}
+    {{ mapping_select('credit', 'Credit / Deposit') }}
+    {{ mapping_select('memo', 'Memo / Type') }}
+    {{ mapping_select('fitid', 'FITID / Reference') }}
+  </div>
+
+  <div class="mt-4 d-flex gap-2 justify-content-end">
+    <a class="btn btn-outline-secondary" href="{{ url_for('imports.upload_form') }}">Cancel</a>
+    <button class="btn btn-primary" type="submit">Continue to Review</button>
+  </div>
+</form>
+
+<div class="mt-4">
+  <h5>Column samples</h5>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Column</th><th>Sample values</th></tr></thead>
+      <tbody>
+      {% for header in csv_mapping.headers %}
+        <tr>
+          <td><code>{{ header }}</code></td>
+          <td>{{ csv_mapping.samples.get(header, [])|join(' · ') }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

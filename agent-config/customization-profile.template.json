@@ -1,0 +1,76 @@
+{
+  "$schema": "./customization-profile.schema.json",
+  "schema_version": 1,
+  "profile_name": "New customization",
+  "requirements_status": "draft",
+  "project": {
+    "display_name": "Perfii",
+    "primary_goal": "Replace this sentence with the user's requested result"
+  },
+  "requested_changes": [
+    {
+      "change_id": "requested_change",
+      "category": "other",
+      "outcome": "Replace this sentence with one observable outcome",
+      "priority": "must_have",
+      "decision_status": "unresolved",
+      "notes": "Classify the change before implementation"
+    }
+  ],
+  "environment": {
+    "target": "undecided",
+    "operating_system": "undecided",
+    "access_model": "undecided",
+    "data_location_preference": "undecided",
+    "backup_expectation": "undecided",
+    "network_access": "undecided",
+    "offline_requirement": "undecided",
+    "authentication_expectation": "undecided",
+    "notes": "Ask only the environment questions that affect this customization"
+  },
+  "data_posture": {
+    "starting_point": "undecided",
+    "development_data": "synthetic_only",
+    "migration_scope": "No migration decision has been made",
+    "backup_before_data_change": "unresolved",
+    "real_data_authorization_status": "not_granted",
+    "notes": "Never treat this profile as authorization to inspect or modify real financial data"
+  },
+  "workflows": [],
+  "privacy": {
+    "real_data_allowed_for_development": false,
+    "synthetic_demo_required": true,
+    "credentials_may_be_stored_in_profile": false,
+    "notes": "Describe roles and behavior without account identifiers, real balances, statements, or credentials"
+  },
+  "decisions": [
+    {
+      "decision_id": "scope_confirmation",
+      "subject": "Requested outcome and boundaries",
+      "statement": "The requested outcome, environment, and consequential financial behavior still need confirmation",
+      "status": "unresolved",
+      "confirmation_required": true,
+      "consequence_if_wrong": "The agent could implement the wrong workflow or change the wrong trust boundary",
+      "related_change_ids": ["requested_change"]
+    }
+  ],
+  "acceptance_scenarios": [
+    {
+      "scenario_id": "requested_outcome",
+      "data_classification": "synthetic",
+      "given": "A fictional user and a disposable generated workspace",
+      "when": "The requested customization is exercised",
+      "then": "Replace this sentence with an observable expected result",
+      "covers_change_ids": ["requested_change"]
+    }
+  ],
+  "deferred": [],
+  "open_questions": [
+    "What observable result must the customization produce?",
+    "Which environment and access boundary should be verified?",
+    "Does the work start from an empty workspace or require a separately authorized migration plan?"
+  ],
+  "handoff_notes": [
+    "Remove placeholder wording and resolve consequential decisions before setting requirements_status to ready_for_implementation"
+  ]
+}

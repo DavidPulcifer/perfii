@@ -1,0 +1,24 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <h4 class="card-title mb-3">Unlock {{ u.name }}</h4>
+        <p class="text-muted">This user has password protection enabled.</p>
+        <form method="post" action="{{ url_for('users.login', user_id=u.id) }}">
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input class="form-control" type="password" name="password" autocomplete="current-password" required autofocus>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary">Enter</button>
+            <a class="btn btn-outline-secondary" href="{{ url_for('users.users_home') }}">Cancel</a>
+          </div>
+        </form>
+        <p class="small text-muted mt-3 mb-0">Password recovery is Admin/server-managed; there is no anonymous self-service reset.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

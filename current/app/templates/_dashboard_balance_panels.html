@@ -1,0 +1,83 @@
+{% set dashboard_unallocated = dashboard_unallocated|default({}) -%}
+<div class="card mt-3">
+  <div class="card-header fw-semibold master-toggle" role="button" data-bs-toggle="collapse" data-bs-target="#masterEnvelopeCollapse" aria-expanded="false" aria-controls="masterEnvelopeCollapse">
+    Master envelope totals
+  </div>
+  <div id="masterEnvelopeCollapse" class="collapse">
+    <div class="card-body">
+      {% if master_rows -%}
+        <div class="accordion" id="masterEnvelopeAccordion">
+          {% for row in master_rows -%}
+            <div class="accordion-item">
+              <h2 class="accordion-header" id="master-heading-{{ loop.index }}">
+                <div class="master-envelope-summary d-flex align-items-center gap-2">
+                  <button class="master-envelope-toggle collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#master-collapse-{{ loop.index }}" aria-expanded="false" aria-controls="master-collapse-{{ loop.index }}" aria-label="Show account balances for {{ row.name }}"></button>
+                  <a class="master-envelope-link envelope-detail-link text-reset text-decoration-none flex-grow-1" href="{{ url_for('envelopes.detail_by_name', envelope_name=row.name) }}">{{ row.name }}</a>
+                  <span class="fw-bold {% if row.total < 0 %}text-danger{% endif %}">{{ row.total | money }}</span>
+                </div>
+              </h2>
+              <div id="master-collapse-{{ loop.index }}" class="accordion-collapse collapse" aria-labelledby="master-heading-{{ loop.index }}">
+                <div class="accordion-body p-0 accordion-body-inset">
+                  <ul class="list-group list-group-flush mb-0">
+                    {% for account_row in row.accounts -%}
+                      <li class="list-group-item d-flex justify-content-between">
+                        <span>{{ account_row.account.name }}</span>
+                        <span class="fw-bold {% if account_row.total < 0 %}text-danger{% endif %}">{{ account_row.total | money }}</span>
+                      </li>
+                    {% endfor -%}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          {% endfor -%}
+        </div>
+      {% else -%}
+        <p class="text-muted mb-0">No envelopes yet.</p>
+      {% endif -%}
+    </div>
+  </div>
+</div>
+<div class="card">
+  <div class="card-header fw-semibold">Per-account balances</div>
+  <div class="card-body">
+    {% if not account_rows -%}
+      <p class="text-muted">Create an account to see per-account balances.</p>
+    {% else -%}
+      <div class="accordion" id="envelopeAccordion">
+        {% for account_row in account_rows -%}
+          {% set account = account_row.account -%}
+          <div class="accordion-item">
+            <h2 class="accordion-header" id="heading-{{ account.id }}">
+              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{ account.id }}" aria-expanded="false" aria-controls="collapse-{{ account.id }}">{{ account.name }}</button>
+            </h2>
+            <div id="collapse-{{ account.id }}" class="accordion-collapse collapse" aria-labelledby="heading-{{ account.id }}">
+              <div class="accordion-body p-0 accordion-body-inset">
+                <ul class="list-group list-group-flush mb-0">
+                  {% set unallocated = account_row.unallocated -%}
+                  {% if unallocated -%}
+                    {% set unallocated_amount = unallocated.get('amount_cents', 0) -%}
+                    <li class="list-group-item d-flex justify-content-between">
+                      <span>{{ unallocated.get('label') }}</span>
+                      <span class="fw-bold {% if unallocated_amount < 0 %}text-danger{% endif %}">{{ unallocated_amount|money }}</span>
+                    </li>
+                  {% endif -%}
+                  {% for envelope_row in account_row.envelopes -%}
+                    {% set envelope = envelope_row.envelope -%}
+                    <li class="list-group-item d-flex justify-content-between">
+                      <span>
+                        <a class="envelope-detail-link text-reset text-decoration-none" href="{{ url_for('envelopes.detail', envelope_id=envelope.id) }}">{{ envelope.name }}</a>
+                        {% if envelope.default_amount_cents -%}<small class="text-muted">(default {{ envelope.default_amount_cents|money }})</small>{% endif -%}
+                      </span>
+                      <span class="fw-bold {% if envelope_row.balance < 0 %}text-danger{% endif %}">{{ envelope_row.balance|money }}</span>
+                    </li>
+                  {% endfor -%}
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endfor -%}
+      </div>
+    {% endif -%}
+  </div>
+</div>
+<script type="application/json" id="dashboard-balances-json">{{ balances_list | tojson }}</script>

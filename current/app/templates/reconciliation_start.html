@@ -1,0 +1,34 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h4 class="mb-0">Reconcile {{ account.name }}</h4>
+  <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('reconciliation.history', account_id=account.id) }}">History</a>
+</div>
+
+{% if account.account_type == 'credit_card' %}
+  <div class="alert alert-info">Enter owed credit card statement balances as negative amounts.</div>
+{% endif %}
+
+<form method="post" action="{{ url_for('reconciliation.start_session', account_id=account.id) }}" class="row g-3">
+  <div class="col-12 col-md-3">
+    <label class="form-label">Statement date</label>
+    <input class="form-control" type="date" name="statement_date" required>
+  </div>
+  <div class="col-12 col-md-3">
+    <label class="form-label">Statement balance</label>
+    <input class="form-control" name="statement_balance" inputmode="decimal" required>
+  </div>
+  <div class="col-12 col-md-4">
+    <label class="form-label">Label</label>
+    <input class="form-control" name="label">
+  </div>
+  <div class="col-12">
+    <label class="form-label">Note</label>
+    <textarea class="form-control" name="note" rows="2"></textarea>
+  </div>
+  <div class="col-12 d-flex gap-2">
+    <button class="btn btn-primary">Start</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('accounts.account_dashboard', account_id=account.id) }}">Cancel</a>
+  </div>
+</form>
+{% endblock %}

@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "project_name": "Perfii",
+  "source_root": "current",
+  "last_reviewed": "2026-07-20",
+  "stack": {
+    "language": "Python",
+    "web_framework": "Flask",
+    "rendering": "Jinja server-rendered HTML with Bootstrap and small browser-side JavaScript",
+    "database": "SQLite",
+    "desktop_shell": "PyWebView starting point for an agent-led desktop conversion",
+    "production_server": "Gunicorn building block for an agent-led private Linux deployment"
+  },
+  "entry_points": {
+    "application_factory": "current/app/__init__.py:create_app",
+    "local_web": "current/scripts/run_local.py",
+    "private_server_wsgi": "current/wsgi.py",
+    "desktop_conversion_start": "current/desktop_app.py",
+    "schema": "current/app/base_schema.sql",
+    "migrations": "current/app/db.py:SCHEMA_MIGRATIONS",
+    "synthetic_bootstrap": "current/scripts/bootstrap_workspace.py",
+    "workspace_doctor": "current/scripts/doctor.py",
+    "workspace_backup_restore": "current/scripts/workspace_backup.py",
+    "safe_local_launcher": "current/scripts/run_local.py",
+    "dependency_manifest": "current/requirements.txt",
+    "agent_config_validator": "tools/validate_agent_config.py",
+    "agent_preflight": "tools/agent_preflight.py",
+    "maintainer_repository_safety": "tools/source_safety.py"
+  },
+  "architecture": {
+    "http": "current/app/blueprints",
+    "business_workflows": "current/app/services",
+    "sql": "current/app/repositories",
+    "database_lifecycle": "current/app/db.py",
+    "templates": "current/app/templates",
+    "static_assets": "current/app/static",
+    "tests": "current/tests"
+  },
+  "data_topology": {
+    "registry": "One meta.sqlite registry stores users and ledger paths",
+    "ledgers": "Each selected user has a separate SQLite ledger",
+    "runtime_paths": [
+      "APP_DATA_DIR",
+      "DB_PATH",
+      "META_DB_PATH",
+      "USER_DB_DIR",
+      "UPLOAD_DIR"
+    ]
+  },
+  "financial_invariants": [
+    "Money is stored and calculated as integer cents",
+    "Expenses and transfer-out legs are negative; income and transfer-in legs are positive",
+    "Transfers are atomically linked equal-and-opposite pairs",
+    "Transaction splits sum exactly to the signed parent amount except explicit service-owned unallocated cases",
+    "Account-locked envelopes are used only with their compatible account",
+    "Selected-user ledger isolation is preserved",
+    "Reconciled transaction mutation protections are preserved",
+    "Planning previews are side-effect free and writes require explicit confirmation",
+    "Multi-table writes use a service and one unit_of_work transaction"
+  ],
+  "customization_surfaces": {
+    "requirements_profile": {
+      "template": "agent-config/customization-profile.template.json",
+      "example": "agent-config/customization-profile.example.json",
+      "worked_example": "agent-config/customization-profile.pay-yourself-first.example.json",
+      "ignored_personal_profile": "agent-config/customization-profile.local.json",
+      "schema": "agent-config/customization-profile.schema.json",
+      "validator": "tools/validate_agent_config.py",
+      "guide": "docs/agent/CUSTOMIZATION.md"
+    },
+    "appearance": {
+      "profile": "agent-config/theme-profile.example.json",
+      "ignored_personal_profile": "agent-config/theme-profile.local.json",
+      "tool": "tools/customize_theme.py",
+      "generated_stylesheet": "current/app/static/theme.generated.css",
+      "guide": "docs/agent/THEMING.md"
+    },
+    "branding": {
+      "display_name_setting": "APP_DISPLAY_NAME",
+      "configuration": "current/app/config.py",
+      "environment_example": "current/.env.example",
+      "stable_identity_rule": "Do not rename data-directory slugs, storage keys, event names, service IDs, or persistent identifiers as part of visible branding without a migration plan"
+    },
+    "terminology": "Visible Jinja copy and user-facing documentation; persisted terms and stable identifiers require separate risk review",
+    "workflows": "Blueprint plus service plus repositories or migration when persistent, with focused tests",
+    "deployment": {
+      "guide": "docs/agent/DEPLOYMENT.md",
+      "desktop_conversion_pointer": "current/generate_production_exe.txt",
+      "private_server_conversion_pointer": "current/DEPLOY.md",
+      "historical_private_server_reference": "current/DEPLOY.md",
+      "private_server_service_template": "current/deploy/envelope-budget.service.example"
+    }
+  },
+  "verification_commands": [
+    {
+      "purpose": "Run the standard coding-agent configuration, privacy, source, and theme preflight",
+      "working_directory": ".",
+      "command": "python tools/agent_preflight.py --quick",
+      "writes": false
+    },
+    {
+      "purpose": "Validate structured customization profiles and machine-readable project references",
+      "working_directory": ".",
+      "command": "python tools/validate_agent_config.py --json",
+      "writes": false
+    },
+    {
+      "purpose": "Require a completed local customization brief to be implementation-ready",
+      "working_directory": ".",
+      "command": "python tools/validate_agent_config.py --profile agent-config/customization-profile.local.json --require-ready --json",
+      "condition": "Run only after agent-config/customization-profile.local.json has been created",
+      "writes": false
+    },
+    {
+      "purpose": "Validate the tracked theme profile and generated stylesheet",
+      "working_directory": ".",
+      "command": "python tools/customize_theme.py --check",
+      "writes": false
+    },
+    {
+      "purpose": "Compile application and agent helper Python",
+      "working_directory": ".",
+      "command": "python -m compileall -q current/app tools",
+      "writes": "Only ignored __pycache__ bytecode"
+    },
+    {
+      "purpose": "Create a new fictional demonstration workspace",
+      "working_directory": "current",
+      "command": "python scripts/bootstrap_workspace.py --data-dir .local/agent-demo --profile demo",
+      "writes": "Creates only the named new destination and refuses an existing destination"
+    },
+    {
+      "purpose": "Verify the managed workspace, SQLite invariants, and users/dashboard/savings smoke path",
+      "working_directory": "current",
+      "command": "python scripts/doctor.py --data-dir .local/agent-demo --json",
+      "writes": "Direct SQLite inspection is read-only; default Flask smoke may apply idempotent schema or metadata repair. Pass --no-smoke for read-only inspection."
+    },
+    {
+      "purpose": "Validate local launch configuration without starting a blocking server",
+      "working_directory": "current",
+      "command": "python scripts/run_local.py --data-dir .local/agent-demo --check-only",
+      "writes": false
+    },
+    {
+      "purpose": "Run the regression suite with generated isolated synthetic databases",
+      "working_directory": "current",
+      "command": "python -m unittest discover -s tests -t .",
+      "writes": "Temporary synthetic test directories plus ignored __pycache__ bytecode unless Python bytecode writing is disabled"
+    }
+  ],
+  "verification_evidence": {
+    "environment": "Windows with Python 3.13",
+    "verified_on": "2026-07-20",
+    "passed": [
+      "Direct-command schema workspace bootstrap and doctor",
+      "Direct-command fictional-demo workspace bootstrap and doctor",
+      "SQLite integrity and foreign-key checks",
+      "Managed registered-ledger path checks",
+      "Managed workspace profile checks",
+      "Users page and selected-user dashboard HTTP 200 smoke checks",
+      "Loopback-only local launcher configuration check",
+      "Disposable local server/browser workflow at desktop and 390-pixel mobile widths",
+      "Savings preview, one grouped transfer recording, and paired transaction verification",
+      "Full synthetic regression suite: 637 tests passed",
+      "Downloaded-repository full preflight: repository safety, schema/demo bootstrap, doctors, launcher, and regression suite passed",
+      "Reviewed repository snapshot: current-tree and reachable-history safety checks passed",
+      "Five workspace bootstrap, refusal, boundary, and doctor tests",
+      "Existing-destination refusal with database SHA-256 preserved",
+      "Managed-workspace backup/restore round trip, online SQLite snapshots, upload preservation, overwrite/path-escape/tamper refusal, and restored demo doctor passed (5 focused tests)"
+    ],
+    "scope_limit": "Disposable local Windows browser workflow and synthetic backup/restore round trip only; not a clean-machine install, owner-data recovery exercise, EXE, or server deployment verification"
+  },
+  "deployment_status": {
+    "shipped_web_app": "clean_bootstrap_plus_disposable_local_browser_workflow_verified_windows_python_3_13",
+    "windows_desktop_conversion": "agent_implementation_and_verification_playbook_included",
+    "private_linux_server_conversion": "agent_implementation_and_verification_playbook_included",
+    "private_cloud_vm_conversion": "agent_implementation_and_verification_playbook_included",
+    "public_multi_user_cloud": "unsupported"
+  },
+  "runtime_ai": {
+    "openai_api_required": false,
+    "chat_integration_required": false
+  },
+  "safety_docs": [
+    "AGENTS.md",
+    "LICENSE",
+    "docs/agent/README.md",
+    "docs/agent/CUSTOMIZATION.md",
+    "docs/agent/PLAYBOOKS.md",
+    "docs/agent/DOMAIN_MAP.md",
+    "docs/agent/DEPLOYMENT.md",
+    "docs/agent/THEMING.md",
+    "docs/agent/DATA_OPERATIONS.md",
+    "THIRD_PARTY_NOTICES.md"
+  ]
+}

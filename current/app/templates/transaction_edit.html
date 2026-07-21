@@ -1,0 +1,182 @@
+{# templates/transaction_edit.html #}
+{% extends "layout.html" %}
+{% block content %}
+
+<h4 class="mb-3">Edit {{ transaction.ttype|capitalize }}</h4>
+
+<form id="transactionEditForm" data-type="{{ transaction.ttype }}" method="post" action="{{ url_for('transactions.transaction_edit', tx_id=transaction.id) }}">
+  <input type="hidden" name="return_to" value="{{ return_to or url_for('transactions.list_') }}">
+  <div class="row g-3">
+    <div class="col-12 col-md-4">
+      <label class="form-label">Account</label>
+      <select class="form-select" name="account_id" required>
+        {% for a in accounts %}
+          <option value="{{ a.id }}" {{ 'selected' if a.id == transaction.account_id else '' }}>{{ a.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="col-6 col-md-4">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-control" name="posted_at" value="{{ transaction.posted_at }}" required>
+    </div>
+
+    {% set is_allocation = (transaction.ttype == 'allocation') %}
+    <div class="col-6 col-md-4">
+      <label class="form-label">
+        Amount
+        {% if is_allocation %}<span class="text-muted">(auto $0)</span>{% endif %}
+      </label>
+      <div class="input-group">
+        <span class="input-group-text">$</span>
+        <input
+          type="number"
+          step="0.01"
+          inputmode="decimal"
+          class="form-control text-end"
+          name="amount"
+          value="{{ (transaction.amount_cents | abs) / 100 }}"
+          {% if is_allocation %}disabled{% endif %}>
+      </div>
+
+      {% if is_allocation %}
+        <!-- Make sure the form still submits an amount value of 0 for allocations -->
+        <input type="hidden" name="amount" value="0">
+        <div class="form-text">
+          Allocation totals are controlled by the envelope lines below. The header stays $0.00.
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="col-6">
+      <label class="form-label">Payee</label>
+      <input type="text" class="form-control" name="payee" value="{{ transaction.payee or '' }}">
+    </div>
+    <div class="col-6">
+      <label class="form-label">Memo</label>
+      <input type="text" class="form-control" name="memo" value="{{ transaction.memo or '' }}">
+    </div>
+    <div class="col-12">
+      <div class="form-check">
+        <input class="form-check-input" type="checkbox" value="1" id="ignoreMatchCb"
+              name="ignore_match" {{ 'checked' if (transaction.ignore_match or 0) == 1 else '' }}>
+        <label class="form-check-label" for="ignoreMatchCb">
+          Ignore this transaction when matching during import
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <hr class="my-4"/>
+
+  {% set envelopes = envelopes %}
+  {% include "_transaction_envelope_editor.html" %}
+
+  <div class="d-flex gap-2 mt-4">
+    <a class="btn btn-outline-secondary" href="{{ return_to or url_for('transactions.list_') }}">Cancel</a>
+    {% if transaction.ttype in ['expense', 'income'] and not transaction.xfer_pair_id %}
+      <button type="button" class="btn btn-outline-primary" data-create-rule-from-form="#transactionEditForm" data-bs-toggle="modal" data-bs-target="#createImportRuleModal">Create Rule</button>
+    {% endif %}
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+  </div>
+</form>
+
+{% if transaction.ttype in ['expense', 'income'] and not transaction.xfer_pair_id %}
+  {% set convert_is_out = (transaction.ttype == 'expense') %}
+  {% set convert_amount = (transaction.amount_cents | abs) | cents_to_dollars %}
+  {% set convert_current_values = {} %}
+  {% for s in splits %}
+    {% set _ = convert_current_values.update({ s.envelope_id: (s.amount_cents or 0) | int }) %}
+  {% endfor %}
+
+  <hr class="my-4"/>
+  <div class="card border-warning-subtle">
+    <div class="card-header bg-warning-subtle fw-semibold">Convert to transfer</div>
+    <div class="card-body">
+      <p class="mb-3 text-muted">
+        Convert this {{ transaction.ttype }} into a linked inter-account transfer. The current transaction row stays as
+        the {{ 'From' if convert_is_out else 'To' }} side so existing import evidence/FITID remains attached; its envelope allocation
+        will be replaced by the transfer allocation below.
+      </p>
+      <form method="post" action="{{ url_for('transactions.transaction_convert_transfer', tx_id=transaction.id) }}">
+        <input type="hidden" name="return_to" value="{{ return_to or url_for('transactions.list_') }}">
+        <input type="hidden" name="convert_current_account_id" value="{{ transaction.account_id }}">
+        <input type="hidden" name="convert_amount" value="{{ convert_amount }}">
+
+        <div class="row g-3 mb-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label">Current account</label>
+            <input type="text" class="form-control" value="{{ accounts | selectattr('id', 'equalto', transaction.account_id) | map(attribute='name') | first }}" disabled>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">{{ 'Transfer to account' if convert_is_out else 'Transfer from account' }}</label>
+            <select class="form-select" name="other_account_id" required>
+              <option value="">Choose account...</option>
+              {% for a in accounts %}
+                {% if a.id != transaction.account_id %}
+                  <option value="{{ a.id }}">{{ a.name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <div class="row g-4">
+          <div class="col-12 col-xl-6">
+            <div class="border rounded p-3 h-100">
+              <h6 class="mb-2">{{ 'From' if convert_is_out else 'To' }} current-account envelopes</h6>
+              {% with
+                envelopes                       = envelopes,
+                env_selector_balances           = envelope_balances,
+                env_selector_input_prefix       = 'convert_current',
+                env_selector_input_mid          = 'amount',
+                env_selector_values             = convert_current_values,
+                env_selector_show_mode          = False,
+                env_selector_scope_id           = 'convert-current',
+                env_selector_account_selector   = '[name=convert_current_account_id]',
+                env_selector_enable_remainder   = True,
+                env_selector_remainder_name     = 'convert_current_remainder',
+                env_selector_remainder_value    = remainder_intent.envelope_id if remainder_intent else None,
+                env_selector_remainder_target_sign = -1 if convert_is_out else 1,
+                env_selector_remainder_legacy_outflow = convert_is_out,
+                env_selector_total_selector     = '[name=convert_amount]'
+              %}
+                {% include "_envelope_selector.html" %}
+              {% endwith %}
+            </div>
+          </div>
+          <div class="col-12 col-xl-6">
+            <div class="border rounded p-3 h-100">
+              <h6 class="mb-2">{{ 'To' if convert_is_out else 'From' }} other-account envelopes</h6>
+              {% with
+                envelopes                       = envelopes,
+                env_selector_balances           = envelope_balances,
+                env_selector_input_prefix       = 'convert_other',
+                env_selector_input_mid          = 'amount',
+                env_selector_values             = {},
+                env_selector_show_mode          = False,
+                env_selector_scope_id           = 'convert-other',
+                env_selector_account_selector   = '[name=other_account_id]',
+                env_selector_enable_remainder   = True,
+                env_selector_remainder_name     = 'convert_other_remainder',
+                env_selector_remainder_value    = None,
+                env_selector_remainder_target_sign = 1 if convert_is_out else -1,
+                env_selector_remainder_legacy_outflow = not convert_is_out,
+                env_selector_total_selector     = '[name=convert_amount]'
+              %}
+                {% include "_envelope_selector.html" %}
+              {% endwith %}
+            </div>
+          </div>
+        </div>
+
+        <div class="alert alert-warning mt-3 mb-3">
+          This replaces the standard transaction’s envelope splits with transfer splits and creates the paired account leg.
+        </div>
+        <button type="submit" class="btn btn-warning">Convert to Transfer</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{% endblock %}

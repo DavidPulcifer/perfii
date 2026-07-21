@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h4 class="mb-0">Reconciliation history: {{ account.name }}</h4>
+  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('reconciliation.account_reconcile', account_id=account.id) }}">Start or resume</a>
+</div>
+
+<table class="table table-sm">
+  <thead>
+    <tr>
+      <th>Statement date</th><th>Status</th><th class="text-end">Statement</th><th class="text-end">Items</th><th class="text-end">Difference</th><th>Closed</th><th>Updated</th><th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for s in sessions %}
+    <tr>
+      <td>{{ s.statement_date }}</td>
+      <td><span class="badge text-bg-{% if s.status == 'closed' %}success{% elif s.status == 'void' %}secondary{% else %}primary{% endif %}">{{ s.status }}</span></td>
+      <td class="text-end">{{ s.statement_balance_cents|money }}</td>
+      <td class="text-end">{{ s.item_count }}</td>
+      <td class="text-end {% if s.difference_cents != 0 %}text-danger{% else %}text-success{% endif %}">{{ s.difference_cents|money }}</td>
+      <td>{{ s.closed_at or '' }}</td>
+      <td>{{ s.updated_at }}</td>
+      <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('reconciliation.history_detail', session_id=s.id) }}">Detail</a></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="text-muted">No reconciliation history yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

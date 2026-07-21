@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "name": "Calm blue",
+  "font_preset": "system",
+  "density": "comfortable",
+  "radius_rem": 0.6,
+  "light": {
+    "primary": "#335CFF",
+    "on_primary": "#FFFFFF",
+    "background": "#F7F9FC",
+    "text": "#172033",
+    "surface": "#FFFFFF",
+    "surface_alt": "#EDF2F7",
+    "border": "#CBD5E1",
+    "muted_text": "#475569",
+    "success": "#157347",
+    "danger": "#B42318",
+    "warning": "#7A4E00"
+  },
+  "dark": {
+    "primary": "#8CABFF",
+    "on_primary": "#0A1833",
+    "background": "#10141B",
+    "text": "#F2F5F8",
+    "surface": "#171D26",
+    "surface_alt": "#202936",
+    "border": "#3B4757",
+    "muted_text": "#BAC4D0",
+    "success": "#75D6A1",
+    "danger": "#FF9C9C",
+    "warning": "#FFD166"
+  }
+}

@@ -1,0 +1,739 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="mb-4">
+  <div>
+    <div class="text-uppercase small fw-semibold text-primary mb-1">Payday planner</div>
+    <h1 class="h2 mb-2">Pay Yourself First</h1>
+    <p class="text-body-secondary mb-0">
+      Turn a take-home paycheck into percentage-based savings transfers before planning bills and spending.
+    </p>
+  </div>
+</div>
+
+{% if not savings_accounts %}
+  <div class="alert alert-warning">
+    Create at least two cash or savings accounts before setting up this planner.
+  </div>
+{% endif %}
+
+<section class="card shadow-sm mb-4">
+  <div class="card-body">
+    <div class="mb-3">
+      <div>
+        <h2 class="h5 mb-1">1. Choose the paycheck source</h2>
+        <p class="text-body-secondary small mb-0">
+          Savings transfers will be recorded out of this account and envelope.
+        </p>
+      </div>
+    </div>
+    <form method="post" action="{{ url_for('savings.save_plan') }}" class="row g-3" data-account-envelope-pair data-account-field="source_account_id" data-envelope-field="source_envelope_id" data-flush-rule-saves>
+      <div class="col-lg-4">
+        <label class="form-label" for="savingsPlanName">Plan name</label>
+        <input class="form-control" id="savingsPlanName" name="name" maxlength="100" value="{{ (plan.name if plan else 'Pay Yourself First') }}">
+      </div>
+      <div class="col-lg-4">
+        <label class="form-label" for="savingsSourceAccount">Paycheck account</label>
+        <select class="form-select" id="savingsSourceAccount" name="source_account_id" required>
+          <option value="">Choose an account</option>
+          {% for account in savings_accounts %}
+            <option value="{{ account.id }}" {{ 'selected' if plan and plan.source_account_id == account.id else '' }}>{{ account.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-lg-4">
+        <label class="form-label" for="savingsSourceEnvelope">Paycheck envelope</label>
+        <select class="form-select" id="savingsSourceEnvelope" name="source_envelope_id" required>
+          <option value="">Choose an envelope</option>
+          {% for envelope in savings_envelopes %}
+            <option value="{{ envelope.id }}"
+                    data-locked-account-id="{{ envelope.locked_account_id or '' }}"
+                    {{ 'selected' if plan and plan.source_envelope_id == envelope.id else '' }}>
+              {{ envelope.name }}{% if envelope.locked_account_id %} · {{ accounts_map.get(envelope.locked_account_id, 'Locked account') }}{% else %} · Any account{% endif %}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12">
+        <button class="btn btn-primary" type="submit">Save paycheck source</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+<section class="card shadow-sm mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-start gap-2 mb-3">
+      <div>
+        <h2 class="h5 mb-1">2. Build your savings rules</h2>
+        <p class="text-body-secondary small mb-0">
+          Choose how much of each paycheck to put toward your savings goals. Your active rules may add up to no more than 100%. Rule changes save automatically.
+        </p>
+      </div>
+      <span class="badge {{ 'text-bg-danger' if total_enabled_basis_points > 10000 else 'text-bg-secondary' }} fs-6" data-savings-total data-total-basis-points="{{ total_enabled_basis_points }}">
+        Percentage to Savings: {{ '%g' % (total_enabled_basis_points / 100) }}%
+      </span>
+    </div>
+
+    <div class="border rounded-3 bg-body-tertiary p-3 mb-3 small">
+      <strong class="d-block mb-1">How the two savings accounts work</strong>
+      <p class="mb-1">Accessible savings is money you want to keep easy to reach, such as an emergency reserve. Long-term savings is money you are setting aside for later.</p>
+      <p class="mb-0">While a goal's accessible balance is below its target, 100% of that goal goes to the accessible account. Once the target has been reached, future contributions go entirely to the long-term account. If you do not choose a long-term account, contributions always stay accessible.</p>
+    </div>
+
+    {% if rules %}
+      <div class="d-grid gap-3 mb-4">
+        {% for rule in rules %}
+          <details class="border rounded-3 p-3" {{ 'open' if not rule.enabled else '' }}>
+            <summary class="d-flex flex-wrap justify-content-between align-items-center gap-2 user-select-none">
+              <span>
+                <strong data-rule-summary-name>{{ rule.name }}</strong>
+                <span class="text-body-secondary ms-2" data-rule-summary-percent>{{ '%g' % (rule.contribution_basis_points / 100) }}%</span>
+              </span>
+              <span class="badge text-bg-secondary {{ 'd-none' if rule.enabled else '' }}" data-rule-summary-status>{{ '' if rule.enabled else 'Paused' }}</span>
+            </summary>
+            <form method="post" action="{{ url_for('savings.update_rule', rule_id=rule.id) }}" class="row g-3 mt-1" data-account-envelope-pair data-account-field="accessible_account_id" data-envelope-field="accessible_envelope_id" data-savings-rule-form>
+              <div class="col-md-6 col-lg-4">
+                <label class="form-label" for="ruleName{{ rule.id }}">Goal name</label>
+                <input class="form-control" id="ruleName{{ rule.id }}" name="name" maxlength="100" value="{{ rule.name }}" required data-rule-name>
+              </div>
+              <div class="col-md-3 col-lg-2">
+                <label class="form-label" for="rulePercentage{{ rule.id }}">Percent</label>
+                <div class="input-group">
+                  <input class="form-control" id="rulePercentage{{ rule.id }}" name="percentage" type="number" min="0.01" max="100" step="0.01" value="{{ '%g' % (rule.contribution_basis_points / 100) }}" required>
+                  <span class="input-group-text">%</span>
+                </div>
+              </div>
+              <div class="col-md-3 col-lg-2 d-flex align-items-end">
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" name="enabled" value="1" id="ruleEnabled{{ rule.id }}" {{ 'checked' if rule.enabled else '' }}>
+                  <label class="form-check-label" for="ruleEnabled{{ rule.id }}">Enabled</label>
+                </div>
+              </div>
+              <div class="col-12"><hr class="my-0"></div>
+              <div class="col-md-6 col-lg-4">
+                <label class="form-label" for="ruleAccessibleAccount{{ rule.id }}">Accessible savings account</label>
+                <select class="form-select" id="ruleAccessibleAccount{{ rule.id }}" name="accessible_account_id" required>
+                  <option value="">Choose an account</option>
+                  {% for account in savings_accounts %}
+                    <option value="{{ account.id }}" {{ 'selected' if rule.accessible_account_id == account.id else '' }}>{{ account.name }}</option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">Use an account you can reach quickly for emergencies or near-term expenses.</div>
+              </div>
+              <div class="col-md-6 col-lg-4">
+                <label class="form-label" for="ruleAccessibleEnvelope{{ rule.id }}">Accessible savings envelope</label>
+                <select class="form-select" id="ruleAccessibleEnvelope{{ rule.id }}" name="accessible_envelope_id" required>
+                  <option value="">Choose an envelope</option>
+                  {% for envelope in savings_envelopes %}
+                    <option value="{{ envelope.id }}" data-locked-account-id="{{ envelope.locked_account_id or '' }}" {{ 'selected' if rule.accessible_envelope_id == envelope.id else '' }}>
+                      {{ envelope.name }}{% if envelope.locked_account_id %} · {{ accounts_map.get(envelope.locked_account_id, 'Locked account') }}{% else %} · Any account{% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-6 col-lg-4">
+                <label class="form-label" for="ruleAccessibleTarget{{ rule.id }}">Accessible target</label>
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  <input class="form-control" id="ruleAccessibleTarget{{ rule.id }}" name="accessible_target" inputmode="decimal" value="{{ rule.accessible_target_cents | cents_to_dollars }}">
+                </div>
+                <div class="form-text">If you choose a long-term account, future contributions switch there after this balance is reached.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="ruleLongTermAccount{{ rule.id }}">Long-term account <span class="text-body-secondary">(optional)</span></label>
+                <select class="form-select" id="ruleLongTermAccount{{ rule.id }}" name="long_term_account_id" data-optional-account-field="long_term_account_id" data-paired-envelope-field="long_term_envelope_id">
+                  <option value="">Keep everything accessible</option>
+                  {% for account in savings_accounts %}
+                    <option value="{{ account.id }}" {{ 'selected' if rule.long_term_account_id == account.id else '' }}>{{ account.name }}</option>
+                  {% endfor %}
+                </select>
+                <div class="form-text">After the accessible target is reached, future contributions go here.</div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label" for="ruleLongTermEnvelope{{ rule.id }}">Long-term envelope <span class="text-body-secondary">(optional)</span></label>
+                <select class="form-select" id="ruleLongTermEnvelope{{ rule.id }}" name="long_term_envelope_id" data-optional-envelope-for="long_term_account_id">
+                  <option value="">No long-term destination</option>
+                  {% for envelope in savings_envelopes %}
+                    <option value="{{ envelope.id }}" data-locked-account-id="{{ envelope.locked_account_id or '' }}" {{ 'selected' if rule.long_term_envelope_id == envelope.id else '' }}>
+                      {{ envelope.name }}{% if envelope.locked_account_id %} · {{ accounts_map.get(envelope.locked_account_id, 'Locked account') }}{% else %} · Any account{% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-12 d-flex flex-wrap gap-2">
+                <span class="small d-none" data-autosave-status role="status" aria-live="polite"></span>
+                <noscript><button class="btn btn-primary" type="submit">Apply changes</button></noscript>
+              </div>
+            </form>
+            <form method="post" action="{{ url_for('savings.delete_rule', rule_id=rule.id) }}" class="mt-2" data-delete-rule data-flush-rule-saves>
+              <button class="btn btn-outline-danger" type="submit">Delete</button>
+            </form>
+          </details>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <details class="border rounded-3 p-3" {{ 'open' if not rules else '' }}>
+      <summary class="fw-semibold user-select-none">Add a savings rule</summary>
+      <form method="post" action="{{ url_for('savings.create_rule') }}" class="row g-3 mt-1" data-account-envelope-pair data-account-field="accessible_account_id" data-envelope-field="accessible_envelope_id" data-flush-rule-saves>
+        <div class="col-md-6 col-lg-4">
+          <label class="form-label" for="newRuleName">Goal name</label>
+          <input class="form-control" id="newRuleName" name="name" maxlength="100" placeholder="Emergency reserve" required>
+        </div>
+        <div class="col-md-3 col-lg-2">
+          <label class="form-label" for="newRulePercentage">Percent</label>
+          <div class="input-group">
+            <input class="form-control" id="newRulePercentage" name="percentage" type="number" min="0.01" max="100" step="0.01" placeholder="10" required>
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <div class="col-md-3 col-lg-2 d-flex align-items-end">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="enabled" value="1" id="newRuleEnabled" checked>
+            <label class="form-check-label" for="newRuleEnabled">Enabled</label>
+          </div>
+        </div>
+        <div class="col-12"><hr class="my-0"></div>
+        <div class="col-md-6 col-lg-4">
+          <label class="form-label" for="newRuleAccessibleAccount">Accessible savings account</label>
+          <select class="form-select" id="newRuleAccessibleAccount" name="accessible_account_id" required>
+            <option value="">Choose an account</option>
+            {% for account in savings_accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}
+          </select>
+          <div class="form-text">Use an account you can reach quickly for emergencies or near-term expenses.</div>
+        </div>
+        <div class="col-md-6 col-lg-4">
+          <label class="form-label" for="newRuleAccessibleEnvelope">Accessible savings envelope</label>
+          <select class="form-select" id="newRuleAccessibleEnvelope" name="accessible_envelope_id" required>
+            <option value="">Choose an envelope</option>
+            {% for envelope in savings_envelopes %}
+              <option value="{{ envelope.id }}" data-locked-account-id="{{ envelope.locked_account_id or '' }}">
+                {{ envelope.name }}{% if envelope.locked_account_id %} · {{ accounts_map.get(envelope.locked_account_id, 'Locked account') }}{% else %} · Any account{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-6 col-lg-4">
+          <label class="form-label" for="newRuleAccessibleTarget">Accessible target</label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            <input class="form-control" id="newRuleAccessibleTarget" name="accessible_target" inputmode="decimal" value="0.00">
+          </div>
+          <div class="form-text">When you choose a long-term account, set an amount above $0. Future contributions switch there after this balance is reached.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="newRuleLongTermAccount">Long-term account <span class="text-body-secondary">(optional)</span></label>
+          <select class="form-select" id="newRuleLongTermAccount" name="long_term_account_id" data-optional-account-field="long_term_account_id" data-paired-envelope-field="long_term_envelope_id">
+            <option value="">Keep everything accessible</option>
+            {% for account in savings_accounts %}<option value="{{ account.id }}">{{ account.name }}</option>{% endfor %}
+          </select>
+          <div class="form-text">After the accessible target is reached, future contributions go here.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="newRuleLongTermEnvelope">Long-term envelope <span class="text-body-secondary">(optional)</span></label>
+          <select class="form-select" id="newRuleLongTermEnvelope" name="long_term_envelope_id" data-optional-envelope-for="long_term_account_id">
+            <option value="">No long-term destination</option>
+            {% for envelope in savings_envelopes %}
+              <option value="{{ envelope.id }}" data-locked-account-id="{{ envelope.locked_account_id or '' }}">
+                {{ envelope.name }}{% if envelope.locked_account_id %} · {{ accounts_map.get(envelope.locked_account_id, 'Locked account') }}{% else %} · Any account{% endif %}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-12">
+          <button class="btn btn-outline-primary" type="submit" {{ 'disabled' if not plan else '' }}>Add rule</button>
+          {% if not plan %}<span class="form-text ms-2">Save the paycheck source first.</span>{% endif %}
+        </div>
+      </form>
+    </details>
+  </div>
+</section>
+
+<section class="card shadow-sm mb-4">
+  <div class="card-body">
+    <h2 class="h5 mb-1">3. Plan this paycheck</h2>
+    <p class="text-body-secondary small mb-3">
+      Previewing is read-only. No transaction is created until you approve a reviewed transfer below.
+    </p>
+    <form method="post" action="{{ url_for('savings.preview') }}" class="row g-3 align-items-end" data-flush-rule-saves>
+      <div class="col-sm-6 col-lg-4">
+        <label class="form-label" for="takeHomePay">Take-home pay</label>
+        <div class="input-group input-group-lg">
+          <span class="input-group-text">$</span>
+          <input class="form-control" id="takeHomePay" name="take_home" inputmode="decimal" placeholder="2,500.00" value="{{ take_home_value }}" required>
+        </div>
+      </div>
+      <div class="col-sm-6 col-lg-3">
+        <label class="form-label" for="savingsPostedAt">Payday</label>
+        <input class="form-control form-control-lg" id="savingsPostedAt" name="posted_at" type="date" value="{{ default_posted_at }}" required>
+      </div>
+      <div class="col-lg-5">
+        <button class="btn btn-success btn-lg" type="submit" {{ 'disabled' if not plan or not rules else '' }}>Calculate savings plan</button>
+      </div>
+    </form>
+  </div>
+</section>
+
+{% if preview %}
+<section class="mb-5" aria-labelledby="savingsPreviewHeading">
+  <div class="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-3">
+    <div>
+      <h2 class="h3 mb-0" id="savingsPreviewHeading">{{ preview.plan_name }}</h2>
+    </div>
+    <span class="text-body-secondary">Payday {{ preview.posted_at }}</span>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="card h-100 border-0 bg-body-tertiary"><div class="card-body">
+        <div class="small text-body-secondary">Take-home pay</div>
+        <div class="display-6 fs-2 fw-semibold">{{ preview.take_home_cents | money }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100 border-success"><div class="card-body">
+        <div class="small text-body-secondary">Pay yourself first · {{ preview.total_percent }}%</div>
+        <div class="display-6 fs-2 fw-semibold text-success">{{ preview.total_contribution_cents | money }}</div>
+      </div></div>
+    </div>
+    <div class="col-md-4">
+      <div class="card h-100 border-0 bg-body-tertiary"><div class="card-body">
+        <div class="small text-body-secondary">Remaining for bills and spending</div>
+        <div class="display-6 fs-2 fw-semibold">{{ preview.remaining_pay_cents | money }}</div>
+      </div></div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-header bg-body"><strong>Savings by goal</strong></div>
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Goal</th>
+            <th class="text-end">Contribution</th>
+            <th>Accessible savings progress</th>
+            <th class="text-end">Accessible</th>
+            <th class="text-end">Long-term</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in preview.contributions %}
+            <tr>
+              <td>
+                <strong>{{ row.name }}</strong>
+                <div class="small text-body-secondary">{{ row.contribution_percent }}%</div>
+              </td>
+              <td class="text-end fw-semibold">{{ row.contribution_cents | money }}</td>
+              <td style="min-width: 220px">
+                {% if row.long_term_account_id %}
+                  <div class="d-flex justify-content-between small mb-1">
+                    <span>{{ row.current_accessible_cents | money }} of {{ row.accessible_target_cents | money }}</span>
+                    <span>{{ row.target_progress_percent }}%</span>
+                  </div>
+                  <div class="progress" role="progressbar" aria-label="Accessible savings progress" aria-valuenow="{{ row.target_progress_basis_points / 100 }}" aria-valuemin="0" aria-valuemax="100" style="height: .45rem">
+                    <div class="progress-bar" style="width: {{ row.target_progress_basis_points / 100 }}%"></div>
+                  </div>
+                  {% if row.long_term_share_basis_points == 10000 %}
+                    <div class="small text-body-secondary mt-1">Target reached · 100% goes to long-term savings</div>
+                  {% else %}
+                    <div class="small text-body-secondary mt-1">Target not yet reached · 100% goes to accessible savings</div>
+                  {% endif %}
+                {% else %}
+                  <span class="small text-body-secondary">No long-term account selected · 100% stays accessible</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <strong>{{ row.accessible_cents | money }}</strong>
+                <div class="small text-body-secondary">{{ row.accessible_account_name }} · {{ row.accessible_envelope_name }}</div>
+              </td>
+              <td class="text-end">
+                <strong>{{ row.long_term_cents | money }}</strong>
+                {% if row.long_term_account_id %}<div class="small text-body-secondary">{{ row.long_term_account_name }} · {{ row.long_term_envelope_name }}</div>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <h3 class="h5 mb-1">Approve the transfers you actually made</h3>
+  <p class="text-body-secondary small mb-3">
+    Complete these transfers with your financial institutions, then record each one here. Goals going to the same account are grouped into one balanced transfer.
+  </p>
+  <div class="row g-3">
+    {% for recommendation in preview.recommendations %}
+      <div class="col-lg-6">
+        <div class="card h-100 {{ 'border-success' if recommendation.group_index in recorded_indices else '' }}">
+          <div class="card-body d-flex flex-column">
+            <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+              <div>
+                <div class="small text-body-secondary">{{ recommendation.source_account_name }} → {{ recommendation.destination_account_name }}</div>
+                <div class="fs-3 fw-semibold">{{ recommendation.amount_cents | money }}</div>
+              </div>
+            </div>
+            <div class="small mb-3">
+              <div class="fw-semibold mb-1">Destination envelope split</div>
+              <ul class="list-unstyled mb-0">
+                {% for split in recommendation.destination_splits %}
+                  <li class="d-flex justify-content-between gap-3"><span>{{ split.envelope_name }}</span><span>{{ split.amount_cents | money }}</span></li>
+                {% endfor %}
+              </ul>
+            </div>
+            <div class="small text-body-secondary mb-3">
+              Source envelope: {{ recommendation.source_envelope_name }}
+            </div>
+            <form method="post" action="{{ url_for('savings.record_recommendation') }}" class="mt-auto" data-flush-rule-saves>
+              <input type="hidden" name="preview_token" value="{{ preview_token }}">
+              <input type="hidden" name="group_index" value="{{ recommendation.group_index }}">
+              <button class="btn {{ 'btn-outline-success' if recommendation.group_index in recorded_indices else 'btn-success' }} w-100" type="submit" {{ 'disabled' if recommendation.group_index in recorded_indices else '' }}>
+                {{ 'Transfer recorded' if recommendation.group_index in recorded_indices else 'Record this transfer' }}
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  const ruleForms = Array.from(document.querySelectorAll('[data-savings-rule-form]'));
+  const totalBadge = document.querySelector('[data-savings-total]');
+  const saveStates = new WeakMap();
+  const formsWaitingForSaves = new WeakSet();
+  const pendingSaveForms = [];
+  let drainingSaveQueue = null;
+  let savedTotalBasisPoints = Number(totalBadge?.dataset.totalBasisPoints || 0);
+
+  function filterEnvelopeOptions(accountSelect, envelopeSelect, optional) {
+    if (!accountSelect || !envelopeSelect) return;
+    const accountId = String(accountSelect.value || '');
+    Array.from(envelopeSelect.options).forEach((option, index) => {
+      if (index === 0) return;
+      const lockedId = String(option.dataset.lockedAccountId || '');
+      option.hidden = !!lockedId && lockedId !== accountId;
+      option.disabled = !!lockedId && lockedId !== accountId;
+    });
+    const selected = envelopeSelect.selectedOptions[0];
+    if (selected && selected.disabled) envelopeSelect.value = '';
+    if (optional) {
+      envelopeSelect.disabled = !accountId;
+      envelopeSelect.required = !!accountId;
+    }
+  }
+
+  function formatBasisPoints(basisPoints) {
+    return (Number(basisPoints || 0) / 100)
+      .toFixed(2)
+      .replace(/\.00$/, '')
+      .replace(/(\.\d)0$/, '$1');
+  }
+
+  function updateTotalBadge() {
+    if (!totalBadge) return;
+    totalBadge.textContent = `Percentage to Savings: ${formatBasisPoints(savedTotalBasisPoints)}%`;
+    totalBadge.classList.toggle('text-bg-danger', savedTotalBasisPoints > 10000);
+    totalBadge.classList.toggle('text-bg-secondary', savedTotalBasisPoints <= 10000);
+  }
+
+  function setSaveStatus(form, message, kind, clearAfter = 0) {
+    const status = form.querySelector('[data-autosave-status]');
+    if (!status) return;
+    const state = saveStates.get(form);
+    if (state?.statusTimer) {
+      window.clearTimeout(state.statusTimer);
+      state.statusTimer = null;
+    }
+    status.textContent = message;
+    status.classList.toggle('d-none', !message);
+    status.classList.remove('text-body-secondary', 'text-success', 'text-danger');
+    if (!message) return;
+    status.classList.add(kind === 'success' ? 'text-success' : kind === 'error' ? 'text-danger' : 'text-body-secondary');
+    if (clearAfter && state) {
+      state.statusTimer = window.setTimeout(() => {
+        state.statusTimer = null;
+        if (!state.dirty && !state.saving && !state.rejected) setSaveStatus(form, '', 'neutral');
+      }, clearAfter);
+    }
+  }
+
+  function formSignature(form) {
+    return new URLSearchParams(new FormData(form)).toString();
+  }
+
+  function updateRuleSummary(form, rule) {
+    const details = form.closest('details');
+    if (!details) return;
+    const name = details.querySelector('[data-rule-summary-name]');
+    const percentage = details.querySelector('[data-rule-summary-percent]');
+    const status = details.querySelector('[data-rule-summary-status]');
+    if (name) name.textContent = rule.name;
+    if (percentage) percentage.textContent = `${formatBasisPoints(rule.contribution_basis_points)}%`;
+    if (status) {
+      status.textContent = rule.enabled ? '' : 'Paused';
+      status.classList.toggle('d-none', rule.enabled);
+    }
+  }
+
+  function enqueueRuleSave(form) {
+    const state = saveStates.get(form);
+    if (!state) return null;
+    window.clearTimeout(state.timer);
+    state.timer = null;
+    if (!state.queued) {
+      state.queued = true;
+      pendingSaveForms.push(form);
+    }
+    if (!drainingSaveQueue) drainingSaveQueue = drainRuleSaveQueue();
+    return drainingSaveQueue;
+  }
+
+  async function drainRuleSaveQueue() {
+    while (pendingSaveForms.length) {
+      const form = pendingSaveForms.shift();
+      const state = saveStates.get(form);
+      if (!state) continue;
+      state.queued = false;
+      await persistRule(form);
+    }
+    drainingSaveQueue = null;
+  }
+
+  function retryRejectedRules(exceptForm) {
+    ruleForms.forEach((form) => {
+      const state = saveStates.get(form);
+      if (form !== exceptForm && state?.rejected && !state.discarding && form.checkValidity()) {
+        enqueueRuleSave(form);
+      }
+    });
+  }
+
+  async function persistRule(form) {
+    const state = saveStates.get(form);
+    if (!state) return;
+    if (state.discarding) {
+      state.dirty = false;
+      state.rejected = false;
+      return;
+    }
+    const signature = formSignature(form);
+    if (signature === state.lastSavedSignature) {
+      state.dirty = false;
+      state.rejected = false;
+      setSaveStatus(form, '', 'neutral');
+      return;
+    }
+    if (!form.checkValidity()) {
+      state.dirty = true;
+      setSaveStatus(form, 'Complete the required fields to save.', 'error');
+      return;
+    }
+
+    state.saving = true;
+    state.dirty = false;
+    state.rejected = false;
+    setSaveStatus(form, 'Saving…', 'neutral');
+    try {
+      const response = await fetch(form.action, {
+        method: 'POST',
+        body: new FormData(form),
+        headers: {
+          'Accept': 'application/json',
+          'X-Savings-Autosave': '1'
+        },
+        credentials: 'same-origin',
+        keepalive: true
+      });
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch (_error) {
+        // The status below supplies a useful fallback if a proxy returns HTML.
+      }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || 'Could not save this rule.');
+      }
+
+      state.lastSavedSignature = signature;
+      savedTotalBasisPoints = Number(payload.total_basis_points || 0);
+      updateTotalBadge();
+      if (state.discarding) {
+        state.dirty = false;
+        state.rejected = false;
+        return;
+      }
+      if (formSignature(form) === signature) {
+        state.dirty = false;
+        updateRuleSummary(form, payload.rule);
+        setSaveStatus(form, 'Saved', 'success', 1400);
+      } else {
+        state.dirty = true;
+        enqueueRuleSave(form);
+      }
+      retryRejectedRules(form);
+    } catch (error) {
+      if (state.discarding) {
+        state.dirty = false;
+        state.rejected = false;
+        return;
+      }
+      if (formSignature(form) !== signature) {
+        state.dirty = true;
+        enqueueRuleSave(form);
+      } else {
+        state.dirty = true;
+        state.rejected = true;
+        setSaveStatus(form, error.message || 'Could not save. Try again.', 'error');
+      }
+    } finally {
+      state.saving = false;
+    }
+  }
+
+  function scheduleRuleSave(form, delay) {
+    const state = saveStates.get(form);
+    if (!state) return;
+    state.dirty = true;
+    state.rejected = false;
+    window.clearTimeout(state.timer);
+    if (!state.saving) setSaveStatus(form, '', 'neutral');
+    state.timer = window.setTimeout(() => enqueueRuleSave(form), delay);
+  }
+
+  function suspendPendingRuleSave(form) {
+    const state = saveStates.get(form);
+    if (!state) return null;
+    state.discarding = true;
+    state.dirty = false;
+    state.rejected = false;
+    window.clearTimeout(state.timer);
+    state.timer = null;
+    for (let index = pendingSaveForms.length - 1; index >= 0; index -= 1) {
+      if (pendingSaveForms[index] === form) pendingSaveForms.splice(index, 1);
+    }
+    state.queued = false;
+    return state;
+  }
+
+  function restoreSuspendedRuleSave(form) {
+    const state = saveStates.get(form);
+    if (!state) return;
+    state.discarding = false;
+    state.dirty = formSignature(form) !== state.lastSavedSignature;
+    if (state.dirty) scheduleRuleSave(form, 0);
+  }
+
+  function hasPendingRuleSaves() {
+    return ruleForms.some((form) => {
+      const state = saveStates.get(form);
+      return !!state && (state.dirty || state.saving || state.queued || state.timer);
+    });
+  }
+
+  async function flushPendingRuleSaves(excludeForm = null) {
+    ruleForms.forEach((form) => {
+      const state = saveStates.get(form);
+      if (form !== excludeForm && state?.dirty) enqueueRuleSave(form);
+    });
+    while (drainingSaveQueue) {
+      const activeQueue = drainingSaveQueue;
+      await activeQueue;
+    }
+    const unresolved = ruleForms.find((form) => {
+      const state = saveStates.get(form);
+      return form !== excludeForm && !!state && (state.dirty || state.saving || state.queued || state.timer);
+    });
+    if (!unresolved) return true;
+    if (!unresolved.checkValidity()) unresolved.reportValidity();
+    unresolved.querySelector(':invalid')?.focus();
+    return false;
+  }
+
+  document.querySelectorAll('[data-account-envelope-pair]').forEach((form) => {
+    const accountSelect = form.querySelector(`[name="${form.dataset.accountField}"]`);
+    const envelopeSelect = form.querySelector(`[name="${form.dataset.envelopeField}"]`);
+    const refresh = () => filterEnvelopeOptions(accountSelect, envelopeSelect, false);
+    accountSelect?.addEventListener('change', refresh);
+    refresh();
+
+    form.querySelectorAll('[data-optional-account-field]').forEach((optionalAccount) => {
+      const envelopeName = optionalAccount.dataset.pairedEnvelopeField;
+      const optionalEnvelope = form.querySelector(`[name="${envelopeName}"]`);
+      const refreshOptional = () => filterEnvelopeOptions(optionalAccount, optionalEnvelope, true);
+      optionalAccount.addEventListener('change', refreshOptional);
+      refreshOptional();
+    });
+  });
+
+  ruleForms.forEach((form) => {
+    saveStates.set(form, {
+      dirty: false,
+      discarding: false,
+      queued: false,
+      rejected: false,
+      saving: false,
+      statusTimer: null,
+      timer: null,
+      lastSavedSignature: formSignature(form)
+    });
+    form.addEventListener('input', (event) => {
+      if (event.target.matches('input[type="checkbox"], select')) return;
+      scheduleRuleSave(form, 600);
+    });
+    form.addEventListener('change', () => scheduleRuleSave(form, 0));
+    form.addEventListener('blur', (event) => {
+      if (event.target.matches('input:not([type="checkbox"]), textarea')) {
+        scheduleRuleSave(form, 0);
+      }
+    }, true);
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      scheduleRuleSave(form, 0);
+    });
+  });
+
+  document.querySelectorAll('[data-flush-rule-saves]').forEach((form) => {
+    form.addEventListener('submit', async (event) => {
+      let excludedRuleForm = null;
+      let suspendedRuleState = null;
+      if (form.hasAttribute('data-delete-rule')) {
+        if (!window.confirm('Delete this savings rule?')) {
+          event.preventDefault();
+          return;
+        }
+        excludedRuleForm = form.closest('details')?.querySelector('[data-savings-rule-form]') || null;
+        if (excludedRuleForm) suspendedRuleState = suspendPendingRuleSave(excludedRuleForm);
+      }
+      if (!hasPendingRuleSaves()) return;
+      event.preventDefault();
+      if (formsWaitingForSaves.has(form)) return;
+      formsWaitingForSaves.add(form);
+      const ready = await flushPendingRuleSaves(excludedRuleForm);
+      if (ready) {
+        HTMLFormElement.prototype.submit.call(form);
+        return;
+      }
+      if (excludedRuleForm && suspendedRuleState) restoreSuspendedRuleSave(excludedRuleForm);
+      formsWaitingForSaves.delete(form);
+    });
+  });
+
+  document.addEventListener('click', async (event) => {
+    if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.target.closest('a[href]');
+    if (!link || link.target || link.hasAttribute('download') || !hasPendingRuleSaves()) return;
+    const destination = new URL(link.href, window.location.href);
+    if (destination.href === window.location.href || (destination.pathname === window.location.pathname && destination.search === window.location.search && destination.hash)) return;
+    event.preventDefault();
+    const ready = await flushPendingRuleSaves();
+    if (ready) window.location.assign(destination.href);
+  });
+
+  updateTotalBadge();
+})();
+</script>
+{% endblock %}

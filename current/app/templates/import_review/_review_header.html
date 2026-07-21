@@ -1,0 +1,61 @@
+<input type="hidden" name="count" value="{{ parsed.transactions|length }}">
+<input type="hidden" name="import_draft_fingerprint" value="{{ import_draft_identity.fingerprint or '' }}">
+<input type="hidden" name="import_source_token" value="{{ import_source_token or '' }}">
+{% if csv_polarity and csv_polarity.enabled %}
+  <input type="hidden" name="csv_upload_token" value="{{ csv_polarity.upload_token }}">
+  <input type="hidden" name="csv_date_col" value="{{ csv_polarity.mapping.get('date') or '' }}">
+  <input type="hidden" name="csv_amount_col" value="{{ csv_polarity.mapping.get('amount') or '' }}">
+  <input type="hidden" name="csv_debit_col" value="{{ csv_polarity.mapping.get('debit') or '' }}">
+  <input type="hidden" name="csv_credit_col" value="{{ csv_polarity.mapping.get('credit') or '' }}">
+  <input type="hidden" name="csv_payee_col" value="{{ csv_polarity.mapping.get('payee') or '' }}">
+  <input type="hidden" name="csv_memo_col" value="{{ csv_polarity.mapping.get('memo') or '' }}">
+  <input type="hidden" name="csv_fitid_col" value="{{ csv_polarity.mapping.get('fitid') or '' }}">
+{% endif %}
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="border rounded p-3">
+      <div>
+        <label class="form-label mb-1"><strong>Account</strong></label>
+        <select class="form-select" id="importAccount" name="account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}" {{ 'selected' if acct and a.id == acct.id else '' }}>
+              {{ a.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6 d-flex align-items-end">
+    <div class="ms-auto">
+      <button class="btn btn-primary" type="submit">Commit Selected</button>
+      <a class="btn btn-outline-secondary ms-2" href="{{ url_for('imports.upload_form') }}">Cancel</a>
+    </div>
+  </div>
+</div>
+
+{% if csv_polarity and csv_polarity.enabled %}
+  <div class="alert {{ 'alert-warning' if csv_polarity.suggested == 'inverted' and csv_polarity.current != 'inverted' else 'alert-info' }} d-flex flex-wrap align-items-center justify-content-between gap-2" role="alert">
+    <div>
+      {% if csv_polarity.current == 'inverted' %}
+        CSV signs are flipped for this review.
+      {% elif csv_polarity.suggested == 'inverted' %}
+        This credit card CSV looks like charges are positive and payments are negative.
+      {% else %}
+        CSV signs are using the original file polarity.
+      {% endif %}
+    </div>
+    <button class="btn btn-sm {{ 'btn-warning' if csv_polarity.suggested == 'inverted' and csv_polarity.current != 'inverted' else 'btn-outline-secondary' }}"
+            type="submit"
+            name="csv_polarity"
+            value="{{ csv_polarity.next }}"
+            formaction="{{ url_for('imports.upload_and_review') }}"
+            formmethod="post"
+            onclick="return confirm('Flipping CSV signs rebuilds this review and clears draft assignments. Continue?')">
+      {{ 'Use original signs' if csv_polarity.current == 'inverted' else 'Flip signs for this review' }}
+    </button>
+  </div>
+{% endif %}
+
+<script type="application/json" id="balances-json">{{ balances_json | default({}) | tojson }}</script>

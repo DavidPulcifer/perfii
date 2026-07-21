@@ -1,0 +1,50 @@
+name: Release verification
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-python-313:
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # A shallow checkout cannot detect private material removed in an
+          # earlier reachable commit.
+          fetch-depth: 0
+          # Pull-request merge refs are synthesized by GitHub. Validate the
+          # contributor's actual head and its real commit identities instead.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: current/requirements.txt
+
+      - name: Install application dependencies
+        run: python -m pip install --disable-pip-version-check -r current/requirements.txt
+
+      - name: Validate agent configuration
+        run: python tools/validate_agent_config.py --json
+
+      - name: Verify generated theme tokens
+        run: python tools/customize_theme.py --check
+
+      - name: Scan tracked source for private data
+        run: python tools/source_safety.py --development
+
+      - name: Scan reachable publication history for private data
+        run: python tools/source_safety.py --history --ref HEAD
+
+      - name: Run synthetic regression suite
+        working-directory: current
+        run: python -m unittest discover -s tests -t .

@@ -1,0 +1,116 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<h4 class="mb-3">Edit Transfer</h4>
+
+<form id="transferEditForm" data-type="transfer" method="post" action="{{ url_for('transactions.transfer_edit', tx_id=(tx_out.id if tx_out is defined else tx_in.id)) }}">
+  <input type="hidden" name="return_to" value="{{ return_to or url_for('transactions.list_') }}">
+  <div class="row g-3">
+    <div class="col-12 col-md-4">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-control" name="posted_at" value="{{ tx_out.posted_at if tx_out is defined else tx_in.posted_at }}" required>
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label">Amount</label>
+      <div class="input-group">
+        <span class="input-group-text">$</span>
+        <input type="number" step="0.01" inputmode="decimal" class="form-control text-end"
+               name="amount"
+               value="{{ (tx_out.amount_cents | abs) | cents_to_dollars if tx_out is defined else (tx_in.amount_cents | abs) | cents_to_dollars }}"
+               required>
+      </div>
+    </div>
+    <div class="col-12 col-md-4">
+      <label class="form-label">Memo</label>
+      <input type="text" class="form-control" name="memo" value="{{ tx_out.memo if tx_out is defined else tx_in.memo }}">
+    </div>
+  </div>
+
+  <hr class="my-4"/>
+
+  <div class="row g-4">
+    <!-- FROM side -->
+    <div class="col-12 col-xl-6">
+      <div class="border rounded p-3 h-100">
+        <h6 class="mb-2">From Account</h6>
+        <select class="form-select mb-3" name="from_account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}" {{ 'selected' if a.id == tx_out.account_id else '' }}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+
+        {% set from_values = {} %}
+        {% if out_map is defined %}
+          {% for eid, cents in out_map.items() %}
+            {% set _ = from_values.update({ eid: cents }) %}
+          {% endfor %}
+        {% endif %}
+
+        <h6 class="mb-2">From Envelopes</h6>
+        {% with
+          envelopes                       = envelopes,
+          env_selector_balances           = envelope_balances,
+          env_selector_input_prefix       = 'from',
+          env_selector_input_mid          = 'amount',
+          env_selector_values             = from_values,
+          env_selector_show_mode          = False,
+          env_selector_scope_id           = 'edit-xfer-from',
+          env_selector_account_selector   = '[name=from_account_id]',
+          env_selector_enable_remainder   = True,
+          env_selector_remainder_name     = 'from_remainder',
+          env_selector_remainder_value    = out_remainder_intent.envelope_id if out_remainder_intent else None,
+          env_selector_remainder_target_sign = -1,
+          env_selector_remainder_legacy_outflow = True,
+          env_selector_total_selector     = '[name=amount]'
+        %}
+          {% include "_envelope_selector.html" %}
+        {% endwith %}
+      </div>
+    </div>
+
+    <!-- TO side -->
+    <div class="col-12 col-xl-6">
+      <div class="border rounded p-3 h-100">
+        <h6 class="mb-2">To Account</h6>
+        <select class="form-select mb-3" name="to_account_id" required>
+          {% for a in accounts %}
+            <option value="{{ a.id }}" {{ 'selected' if a.id == tx_in.account_id else '' }}>{{ a.name }}</option>
+          {% endfor %}
+        </select>
+
+        {% set to_values = {} %}
+        {% if in_map is defined %}
+          {% for eid, cents in in_map.items() %}
+            {% set _ = to_values.update({ eid: cents }) %}
+          {% endfor %}
+        {% endif %}
+
+        <h6 class="mb-2">To Envelopes</h6>
+        {% with
+          envelopes                       = envelopes,
+          env_selector_balances           = envelope_balances,
+          env_selector_input_prefix       = 'to',
+          env_selector_input_mid          = 'amount',
+          env_selector_values             = to_values,
+          env_selector_show_mode          = False,
+          env_selector_scope_id           = 'edit-xfer-to',
+          env_selector_account_selector   = '[name=to_account_id]',
+          env_selector_enable_remainder   = True,
+          env_selector_remainder_name     = 'to_remainder',
+          env_selector_remainder_value    = in_remainder_intent.envelope_id if in_remainder_intent else None,
+          env_selector_total_selector     = '[name=amount]'
+        %}
+          {% include "_envelope_selector.html" %}
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex gap-2 mt-4">
+    <a class="btn btn-outline-secondary" href="{{ return_to or url_for('transactions.list_') }}">Cancel</a>
+    <button type="button" class="btn btn-outline-primary" data-create-rule-from-form="#transferEditForm" data-bs-toggle="modal" data-bs-target="#createImportRuleModal">Create Rule</button>
+    <button type="submit" class="btn btn-primary">Save Changes</button>
+  </div>
+</form>
+
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4>Envelopes</h4>
+<form class="row g-2" method="post" action="{{ url_for('envelopes.envelope_new') }}">
+  <div class="col-5"><input class="form-control" name="name" placeholder="Envelope name" required></div>
+  <div class="col-4">
+    <select name="locked_account_id" class="form-select">
+      <option value="">Unlocked (usable on any account)</option>
+      {% for a in accounts %}
+        <option value="{{ a.id }}">Locked to: {{ a.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="col-2"><input class="form-control" name="default_amount" placeholder="Default $" type="number" step="0.01"></div>
+  <div class="col-1"><button class="btn btn-primary w-100">Add</button></div>
+</form>
+<hr>
+<h5>Active envelopes</h5>
+<table class="table table-sm align-middle">
+  <thead>
+    <tr>
+      <th>Name</th><th>Locked Account</th><th>Default amount</th><th></th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for e in envelopes %}
+    <tr>
+      <td><a class="envelope-detail-link text-reset text-decoration-none" href="{{ url_for('envelopes.detail', envelope_id=e.id) }}">{{ e.name }}</a></td>
+      <td>{% if e.locked_account_id %}Locked account {{ accounts_map.get(e.locked_account_id, '#' ~ (e.locked_account_id|string)) }}{% else %}<span class="text-muted">Unlocked</span>{% endif %}</td>
+      <td>{{ e.default_amount_cents|money }}</td>
+      <td>
+        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('envelopes.envelope_edit', envelope_id=e.id) }}">Edit</a>
+      </td>
+      <td>
+        <form method="post" action="{{ url_for('envelopes.envelope_delete', envelope_id=e.id) }}" onsubmit="return confirm('Archive envelope? Existing transactions will keep using it.')">
+          <button class="btn btn-sm btn-outline-warning">Archive</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr>
+      <td colspan="5" class="text-muted">No active envelopes.</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h5 class="mt-4">Archived envelopes</h5>
+<p class="text-muted small mb-2">Archived envelopes are hidden from new transaction, import, allocation, and dashboard envelope selectors. Existing transactions still keep their split history.</p>
+<table class="table table-sm align-middle">
+  <thead>
+    <tr>
+      <th>Name</th><th>Locked Account</th><th>Default amount</th><th>Archived</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for e in archived_envelopes %}
+    <tr class="text-muted">
+      <td><a class="envelope-detail-link text-reset text-decoration-none" href="{{ url_for('envelopes.detail', envelope_id=e.id) }}">{{ e.name }}</a></td>
+      <td>{% if e.locked_account_id %}Locked account {{ accounts_map.get(e.locked_account_id, '#' ~ (e.locked_account_id|string)) }}{% else %}Unlocked{% endif %}</td>
+      <td>{{ e.default_amount_cents|money }}</td>
+      <td>{{ e.archived_at }}</td>
+      <td>
+        <form method="post" action="{{ url_for('envelopes.envelope_restore', envelope_id=e.id) }}">
+          <button class="btn btn-sm btn-outline-success">Restore</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr>
+      <td colspan="5" class="text-muted">No archived envelopes.</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

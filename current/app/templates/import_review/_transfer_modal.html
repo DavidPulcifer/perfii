@@ -1,0 +1,90 @@
+<div class="modal fade" id="trfModal-{{ i }}" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable modal-fullscreen-sm-down modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Account Transfer — {{ t.posted_at }} · {{ t.payee }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="isTransfer_{{ i }}" name="is_transfer_{{ i }}" value="1">
+          <label class="form-check-label" for="isTransfer_{{ i }}">
+            Mark this imported row as an inter-account transfer
+          </label>
+        </div>
+
+        <div class="row g-3 align-items-end mb-3">
+          <div class="col-md-7">
+            <label class="form-label">Other account</label>
+            <select class="form-select" id="trfAccount-{{ i }}" name="transfer_account_{{ i }}">
+              <option value="">Select account…</option>
+              {% for a in accounts %}
+                {% if a.id != (acct.id if acct else none) %}
+                  <option value="{{ a.id }}">{{ a.name }}</option>
+                {% endif %}
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-5">
+            <div class="small text-muted">
+              You’ll assign envelopes in the *other* account below. Total must equal the transfer amount.
+            </div>
+          </div>
+        </div>
+
+        <input type="hidden" id="trf_total_{{ i }}" value="{{ (cents|abs) / 100 }}">
+
+        {% set envelopes = envelopes_all %}
+        {% set env_selector_values = {} %}
+        {% set env_selector_modes = {} %}
+        {% set env_selector_show_mode = False %}
+        {% set env_selector_show_default_buttons = True %}
+        {% set env_selector_input_prefix = "trf_amt_" ~ i %}
+        {% set env_selector_input_mid = "" %}
+        {% set env_selector_scope_id = "trf-" ~ i %}
+        {% set env_selector_account_selector = "#trfAccount-" ~ i %}
+        {% set env_selector_show_zero_balance = True %}
+        {% set env_selector_enable_remainder = True %}
+        {% set env_selector_remainder_name = "trf_remainder_" ~ i %}
+        {% set env_selector_remainder_value = "" %}
+        {% set env_selector_remainder_target_sign = 1 if cents < 0 else -1 %}
+        {% set env_selector_remainder_legacy_outflow = cents >= 0 %}
+        {% set env_selector_total_selector = "#trf_total_" ~ i %}
+        {% set env_selector_validation_label = "other-account transfer envelopes" %}
+        {% set env_selector_validation_toggle = "#isTransfer_" ~ i %}
+        {% include "_envelope_selector.html" %}
+
+        <hr class="my-3">
+
+        <div class="mb-2 fw-semibold">From this account — envelope amounts to {{ from_account_direction }}</div>
+        <input type="hidden" id="from_total_{{ i }}" value="{{ (cents|abs) / 100 }}">
+
+        {% set envelopes = envelopes_all %}
+        {% set env_selector_values = {} %}
+        {% set env_selector_modes = {} %}
+        {% set env_selector_show_mode = False %}
+        {% set env_selector_show_default_buttons = True %}
+        {% set env_selector_input_prefix = "trf_from_amt_" ~ i %}
+        {% set env_selector_input_mid = "" %}
+        {% set env_selector_scope_id = "trf-from-" ~ i %}
+        {% set env_selector_account_selector = "#importAccount" %}
+        {% set env_selector_show_zero_balance = True %}
+        {% set env_selector_enable_remainder = True %}
+        {% set env_selector_remainder_name = "trf_from_remainder_" ~ i %}
+        {% set env_selector_remainder_value = "" %}
+        {% set env_selector_remainder_target_sign = -1 if cents < 0 else 1 %}
+        {% set env_selector_remainder_legacy_outflow = cents < 0 %}
+        {% set env_selector_total_selector = "#from_total_" ~ i %}
+        {% set env_selector_validation_label = "current-account transfer envelopes" %}
+        {% set env_selector_validation_toggle = "#isTransfer_" ~ i %}
+        {% include "_envelope_selector.html" %}
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary me-auto" data-role="transfer-clear">Clear</button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-validate-env-dismiss>Done</button>
+      </div>
+    </div>
+  </div>
+</div>

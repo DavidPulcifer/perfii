@@ -1,0 +1,14 @@
+HISTORICAL POINTER — DO NOT PACKAGE THIS WORKTREE OR ANY SQLITE DATABASE
+
+This project ships as a web application. A coding agent can adapt it into a
+desktop application for a particular user, but this file is not a build recipe
+and no desktop artifact is included.
+
+Start with ../docs/agent/DEPLOYMENT.md. The desktop conversion guidance there
+describes the decisions, implementation work, and verification expected for a
+desktop shell or executable.
+
+Any future package must build first-run data from app/base_schema.sql, keep
+writable data outside the installed application, and exclude every *.sqlite,
+*.db, secret, upload, backup, local profile, and user-specific path. Never use
+an ignored repository-era database as a schema template or packaged seed.

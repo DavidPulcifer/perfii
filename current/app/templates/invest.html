@@ -1,0 +1,441 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4 class="mb-3">Investment — {{ acct.name }}</h4>
+
+<div class="row g-3">
+  <div class="col-lg-5 order-2 order-lg-1">
+    <div class="card h-100">
+      <div class="card-body">
+        <form class="row g-2" method="post" action="{{ url_for('invest.invest_valuation_new') }}">
+          <input type="hidden" name="account_id" value="{{ account_id }}">
+          <div class="col-6">
+            <label class="form-label">Date</label>
+            <input class="form-control" type="date" name="asof_date" value="{{ new_valuation_date }}" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Value ($)</label>
+            <input class="form-control text-end" type="number" step="0.01" name="value" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Note (optional)</label>
+            <input class="form-control" name="note">
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary">Add Valuation</button>
+          </div>
+        </form>
+
+        <hr>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="app-table-head">
+              <tr><th>Date</th><th class="text-end">Value</th><th>Note</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for v in valuations %}
+              <tr>
+                <td>
+                  <form id="valuation-edit-{{ v.id }}" method="post" action="{{ url_for('invest.invest_valuation_edit', valuation_id=v.id) }}">
+                    <input type="hidden" name="account_id" value="{{ account_id }}">
+                    <input class="form-control form-control-sm" type="date" name="asof_date" value="{{ v.asof_date }}" required>
+                  </form>
+                </td>
+                <td>
+                  <input class="form-control form-control-sm text-end" form="valuation-edit-{{ v.id }}" type="number" step="0.01" name="value" value="{{ v.value_cents|cents_to_dollars }}" required>
+                </td>
+                <td>
+                  <input class="form-control form-control-sm" form="valuation-edit-{{ v.id }}" name="note" value="{{ v.note or '' }}">
+                </td>
+                <td class="text-end">
+                  <button class="btn btn-sm btn-outline-primary" form="valuation-edit-{{ v.id }}">Save</button>
+                  <form method="post" action="{{ url_for('invest.invest_valuation_delete', valuation_id=v.id) }}"
+                        class="d-inline" onsubmit="return confirm('Delete this valuation?')">
+                      <input type="hidden" name="account_id" value="{{ account_id }}">
+                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-muted">No valuations yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <form class="row g-2" method="post" action="{{ url_for('invest.invest_note_new') }}">
+          <input type="hidden" name="account_id" value="{{ account_id }}">
+          <div class="col-5">
+            <label class="form-label">Note date</label>
+            <input class="form-control" type="date" name="note_date" required>
+          </div>
+          <div class="col-7">
+            <label class="form-label">Investment note</label>
+            <input class="form-control" name="body" required>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary">Add Note</button>
+          </div>
+        </form>
+
+        <div class="table-responsive mt-3">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="app-table-head">
+              <tr><th>Date</th><th>Note</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for note in notes %}
+              <tr id="investment-note-{{ note.id }}">
+                <td style="width: 9rem;">
+                  <form id="note-edit-{{ note.id }}" method="post" action="{{ url_for('invest.invest_note_edit', note_id=note.id) }}">
+                    <input type="hidden" name="account_id" value="{{ account_id }}">
+                    <input class="form-control form-control-sm" type="date" name="note_date" value="{{ note.note_date }}" required>
+                  </form>
+                </td>
+                <td>
+                  <input class="form-control form-control-sm" form="note-edit-{{ note.id }}" name="body" value="{{ note.body }}" required>
+                </td>
+                <td class="text-end text-nowrap">
+                  <button class="btn btn-sm btn-outline-primary" form="note-edit-{{ note.id }}">Save</button>
+                  <form method="post" action="{{ url_for('invest.invest_note_delete', note_id=note.id) }}"
+                        class="d-inline" onsubmit="return confirm('Delete this investment note?')">
+                    <input type="hidden" name="account_id" value="{{ account_id }}">
+                    <button class="btn btn-sm btn-outline-danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="text-muted">No investment notes yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-7 order-1 order-lg-2">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <div class="fw-semibold">Value vs Cumulative Contributions</div>
+        </div>
+        <div class="d-flex justify-content-end mb-2">
+          <button id="resetZoomBtn" type="button" class="btn btn-sm btn-outline-secondary">
+            Reset view
+          </button>
+        </div>
+        <canvas id="invChart" height="180"></canvas>
+        <div id="investmentNotePanel" class="alert alert-secondary py-2 px-3 mt-3 d-none" role="status" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.2.0/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+(function () {
+  // ======================================
+  // 1) SETTINGS (edit these if you want)
+  // ======================================
+  const settings = {
+    // Data & formatting --------------------------------------------
+    currency: 'USD',           // currency for ticks/tooltips
+
+    // Interaction ---------------------------------------------------
+    interactionMode: 'nearest',// 'nearest' behavior along the x-axis
+    interactionAxis: 'x',      // couple hover along X only
+    interactionIntersect: false, // don't require exact point intersection
+    zoomMode: 'x',             // wheel/pinch zoom the date axis only
+    panMode: 'x',              // drag pans through time only
+
+    // X axis (time scale) -------------------------------------------
+    xTimeUnit: 'day',          // 'day' | 'month' | 'year'
+
+    // Y axis --------------------------------------------------------
+    yBeginAtZero: true,        // start y-axis at 0  (matches your current)
+    yMin: undefined,           // set a number to lock min; leave undefined to auto
+    yMax: undefined,           // set a number to lock max; leave undefined to auto
+    yMaxTicks: undefined,      // limit number of ticks; leave undefined for default
+
+    // Legend (left as defaults to match current visual) ------------
+    legendDisplay: undefined,  // undefined = Chart.js default (true for line)
+    legendPosition: undefined, // undefined = default ('top')
+
+    // Gridlines (undefined keeps Chart.js defaults) ----------------
+    xGridDisplay: undefined,   // true/false/undefined
+    yGridDisplay: undefined,   // true/false/undefined
+
+    // Animation & layout (keep defaults minimal) -------------------
+    animationMs: undefined,    // e.g., 400; undefined = Chart.js default
+    animationEasing: undefined,// e.g., 'easeOutQuart'
+    layoutPadding: undefined,  // e.g., {top:8,right:12,bottom:8,left:8}
+
+    // Dataset: Account Value ---------------------------------------
+    valueColor: undefined,     // border color (e.g., '#2563eb'); undefined = default
+    valueFill: 'transparent',  // 'transparent' = no area fill (matches current)
+    valueWidth: undefined,     // line width (px); undefined = default
+    valueDash: [],             // dashed line pattern, e.g., [6,6]
+    valueTension: 0,           // 0 = straight segments (matches current)
+    valuePointRadius: undefined,    // point radius; undefined = default
+    valuePointHoverRadius: undefined,// hover point radius; undefined = default
+
+    // Dataset: Cumulative Contributions ----------------------------
+    contribColor: undefined,   // border color; undefined = default
+    contribFill: 'transparent',// 'transparent' = no area fill (matches current)
+    contribWidth: undefined,   // line width; undefined = default
+    contribDash: [],           // dashed pattern
+    contribTension: 0,         // 0 = straight (matches current)
+    contribStepped: 'before',  // stay flat until each transaction date, then jump
+    contribPointRadius: undefined,
+    contribPointHoverRadius: undefined,
+  };
+
+  // ======================================
+  // 2) DATA FROM SERVER (do not edit)
+  // ======================================
+  const valuationXY    = {{ val_xy|default([])|tojson }};     // [{ x:'YYYY-MM-DD', y:Number in dollars }]
+  const contributionXY = {{ contrib_xy|default([])|tojson }}; // [{ x:'YYYY-MM-DD', y:Number in dollars }]
+  const noteMarkers    = {{ note_markers|default([])|tojson }}; // [{ id:Number, x:'YYYY-MM-DD', y:Number, body:String }]
+  const graphRange     = {{ graph_range|default({})|tojson }};
+
+  // Find canvas and prepare currency formatter
+  const el = document.getElementById('invChart');
+  if (!el) return;
+  const fmt = new Intl.NumberFormat('en-US', { style: 'currency', currency: settings.currency });
+  const cssVar = (name, fallback) => getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  const chartTheme = () => ({
+    text: cssVar('--bs-body-color', '#212529'),
+    secondaryText: cssVar('--bs-secondary-color', '#6c757d'),
+    grid: cssVar('--bs-border-color-translucent', 'rgba(0,0,0,.12)'),
+    valueLine: cssVar('--bs-primary', '#0d6efd'),
+    contribLine: cssVar('--bs-success', '#198754'),
+    noteFill: cssVar('--bs-body-color', '#111827'),
+    noteBorder: cssVar('--bs-body-bg', '#ffffff'),
+  });
+  const initialChartTheme = chartTheme();
+  Chart.defaults.color = initialChartTheme.text;
+  Chart.defaults.borderColor = initialChartTheme.grid;
+
+  // ======================================
+  // 3) BUILD DATASETS (respects settings)
+  // ======================================
+  function buildDataset(opts) {
+    const ds = {
+      label: opts.label,
+      data: opts.data,
+      parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+      tension: opts.tension,                 // 0 per your current config
+    };
+    if (opts.color) ds.borderColor = opts.color;
+    if (opts.fill && opts.fill !== 'transparent') {
+      ds.backgroundColor = opts.fill;
+      ds.fill = true;                        // only when not 'transparent'
+    }
+    if (opts.width !== undefined) ds.borderWidth = opts.width;
+    if (Array.isArray(opts.dash) && opts.dash.length) ds.borderDash = opts.dash;
+    if (opts.stepped !== undefined) ds.stepped = opts.stepped;
+    if (opts.pointRadius !== undefined) ds.pointRadius = opts.pointRadius;
+    if (opts.pointHoverRadius !== undefined) ds.pointHoverRadius = opts.pointHoverRadius;
+    return ds;
+  }
+
+  const valuationDS = buildDataset({
+    label: 'Account Value',
+    data: valuationXY,
+    color: settings.valueColor || initialChartTheme.valueLine,
+    fill: settings.valueFill,                // 'transparent' = no area fill
+    width: settings.valueWidth,
+    dash: settings.valueDash,
+    tension: settings.valueTension,          // 0
+    pointRadius: settings.valuePointRadius,
+    pointHoverRadius: settings.valuePointHoverRadius,
+  });
+
+  const contribDS = buildDataset({
+    label: 'Cumulative Contributions',
+    data: contributionXY,
+    color: settings.contribColor || initialChartTheme.contribLine,
+    fill: settings.contribFill,              // 'transparent' = no area fill
+    width: settings.contribWidth,
+    dash: settings.contribDash,
+    tension: settings.contribTension,        // 0
+    stepped: settings.contribStepped,
+    pointRadius: settings.contribPointRadius,
+    pointHoverRadius: settings.contribPointHoverRadius,
+  });
+
+  const notesDS = {
+    label: 'Investment Notes',
+    type: 'scatter',
+    data: noteMarkers,
+    parsing: { xAxisKey: 'x', yAxisKey: 'y' },
+    showLine: false,
+    pointStyle: 'triangle',
+    pointRadius: noteMarkers.length ? 6 : 0,
+    pointHoverRadius: 8,
+    pointBackgroundColor: initialChartTheme.noteFill,
+    pointBorderColor: initialChartTheme.noteBorder,
+    pointBorderWidth: 1.5,
+  };
+
+  function showNotePanel(note) {
+    const panel = document.getElementById('investmentNotePanel');
+    if (!panel || !note) return;
+    panel.classList.remove('d-none');
+    panel.textContent = `${note.x}: ${note.body}`;
+  }
+
+  // ======================================
+  // 4) CHART INIT (matches your options)
+  // ======================================
+  const chart = new Chart(el, {
+    type: 'line',
+    data: { datasets: [valuationDS, contribDS, notesDS] },
+    options: {
+      // Keep: responsive on
+      responsive: true,
+
+      // Keep: nearest interaction along X without intersect requirement
+      interaction: {
+        mode: settings.interactionMode,
+        axis: settings.interactionAxis,
+        intersect: settings.interactionIntersect
+      },
+
+      // Plugins (legend left default, tooltip customized currency)
+      plugins: {
+        legend: {
+          display: settings.legendDisplay,    // undefined = default
+          position: settings.legendPosition,  // undefined = default 'top'
+          labels: {
+            color: initialChartTheme.text
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.dataset.label === 'Investment Notes') {
+                return `${ctx.raw.x}: ${ctx.raw.body}`;
+              }
+              return `${ctx.dataset.label}: ${fmt.format(ctx.parsed.y)}`;
+            }
+          }
+        },
+        zoom: {
+          zoom: {
+            wheel: { enabled: true },
+            pinch: { enabled: true },
+            mode: settings.zoomMode
+          },
+          pan:  { enabled: true, modifierKey: null, mode: settings.panMode },
+          limits: {
+            x: { min: graphRange.fullMin || undefined, max: graphRange.fullMax || undefined }
+          }
+        }
+      },
+
+      // Scales (time x-axis, y begins at zero with currency tick labels)
+      scales: {
+        x: {
+          type: 'time',
+          min: graphRange.defaultMin || undefined,
+          max: graphRange.defaultMax || undefined,
+          time: { unit: settings.xTimeUnit }, // 'day'
+          ticks: { color: initialChartTheme.secondaryText },
+          grid: { display: settings.xGridDisplay, color: initialChartTheme.grid } // undefined = default
+        },
+        y: {
+          beginAtZero: settings.yBeginAtZero, // true
+          min: settings.yMin,                 // undefined = auto
+          max: settings.yMax,                 // undefined = auto
+          ticks: {
+            callback: (v) => fmt.format(v),
+            maxTicksLimit: settings.yMaxTicks, // undefined = default
+            color: initialChartTheme.secondaryText
+          },
+          grid: { display: settings.yGridDisplay, color: initialChartTheme.grid } // undefined = default
+        }
+      },
+
+      // Optional animation/layout (kept undefined to match defaults)
+      animation: {
+        duration: settings.animationMs,
+        easing: settings.animationEasing
+      },
+      layout: {
+        padding: settings.layoutPadding
+      },
+      onClick: (_event, elements) => {
+        const noteHit = elements.find((item) => chart.data.datasets[item.datasetIndex].label === 'Investment Notes');
+        if (!noteHit) return;
+        showNotePanel(chart.data.datasets[noteHit.datasetIndex].data[noteHit.index]);
+      }
+    }
+  });
+
+  function applyChartTheme() {
+    const theme = chartTheme();
+    Chart.defaults.color = theme.text;
+    Chart.defaults.borderColor = theme.grid;
+    if (!settings.valueColor) valuationDS.borderColor = theme.valueLine;
+    if (!settings.contribColor) contribDS.borderColor = theme.contribLine;
+    notesDS.pointBackgroundColor = theme.noteFill;
+    notesDS.pointBorderColor = theme.noteBorder;
+    chart.options.plugins.legend.labels.color = theme.text;
+    chart.options.scales.x.ticks.color = theme.secondaryText;
+    chart.options.scales.x.grid.color = theme.grid;
+    chart.options.scales.y.ticks.color = theme.secondaryText;
+    chart.options.scales.y.grid.color = theme.grid;
+    chart.update('none');
+  }
+
+  window.addEventListener('fitft:themechange', applyChartTheme);
+
+
+})();
+</script>
+
+<script>
+(function () {
+  const btn = document.getElementById('resetZoomBtn');
+  const cvs = document.getElementById('invChart');
+  if (!cvs) return;
+
+  // Helper: get the existing chart instance created earlier
+  function getChart() {
+    // Chart.js v3/v4: resolve by canvas element (or id string)
+    if (window.Chart && Chart.getChart) {
+      return Chart.getChart(cvs) || Chart.getChart('invChart');
+    }
+    // Fallback if you exposed it globally elsewhere as window.invChart
+    return window.invChart || null;
+  }
+
+  function reset() {
+    const chart = getChart();
+    if (chart && typeof chart.resetZoom === 'function') {
+      chart.resetZoom();
+    }
+  }
+
+  // Button click to reset
+  if (btn) btn.addEventListener('click', reset);
+
+  // Double-click the canvas to reset
+  cvs.addEventListener('dblclick', reset);
+
+  // Keyboard shortcuts: R or Escape resets
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'r' || e.key === 'R' || e.key === 'Escape') reset();
+  });
+})();
+</script>
+
+{% endblock %}

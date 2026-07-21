@@ -1,0 +1,28 @@
+{# templates/_transaction_envelope_editor.html
+   Used by transaction_edit.html (single expense/income)
+#}
+
+{% set pre_values = {} %}
+{% for s in splits %}
+  {% set c = (s.amount_cents or 0) | int %}
+  {% set _ = pre_values.update({ s.envelope_id: c }) %}
+{% endfor %}
+{% set is_allocation = (transaction.ttype == 'allocation') %}
+
+{% with
+  envelopes                      = envelopes,
+  env_selector_balances          = envelope_balances,
+  env_selector_input_prefix      = 'edit_amt',
+  env_selector_values            = pre_values,
+  env_selector_modes             = {},
+  env_selector_show_mode         = (transaction.ttype == 'income'),
+  env_selector_scope_id          = 'edit',
+  env_selector_account_selector  = '[name=account_id]',
+  env_selector_enable_remainder  = (not is_allocation),
+  env_selector_remainder_name    = 'remainder_envelope_id',
+  env_selector_remainder_value   = remainder_intent.envelope_id if remainder_intent else None,
+  env_selector_remainder_target_sign = -1 if transaction.ttype in ('expense', 'transfer_out') else 1,
+  env_selector_total_selector    = '' if is_allocation else '[name=amount]'
+%}
+  {% include "_envelope_selector.html" %}
+{% endwith %}

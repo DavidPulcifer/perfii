@@ -1,0 +1,359 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<h4 class="mb-3">Import Review</h4>
+
+<form method="post"
+      action="{{ url_for('imports.commit_import') }}"
+      id="importReviewForm"
+      data-manual-candidates-url="{{ url_for('imports.manual_candidates_api') }}"
+      data-dupes-url="{{ url_for('imports.dupes_api') }}"
+      data-draft-save-url="{{ url_for('imports.save_import_review_draft_api') }}"
+      data-draft-discard-url="{{ url_for('imports.discard_import_review_draft_api') }}"
+      data-draft-fingerprint="{{ import_draft_identity.fingerprint or '' }}">
+  {% include "import_review/_review_header.html" %}
+
+  {# === Manual EXPENSES to Match === #}
+  <div id="manual-exp-panel"></div>
+
+  {# === Manual INCOME to Match === #}
+  <div id="manual-inc-panel"></div>
+
+
+  {# ----------------- EXPENSES SECTION ----------------- #}
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-semibold">Expenses</div>
+      <div class="form-check m-0">
+        <input class="form-check-input" type="checkbox" id="exp_select_all">
+        <label class="form-check-label" for="exp_select_all">Select all</label>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive import-review-table-wrap">
+        <table class="table table-sm align-middle mb-0 import-review-table" data-import-sort-section="exp" data-checkbox-range-scope>
+          <thead class="app-table-head">
+            <tr>
+              <th style="width:2rem;"></th>
+              <th style="width:8rem;"><button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none import-sort-header" data-import-sort-section="exp" data-import-sort="date">Date</button></th>
+              <th style="width:6rem;">Amount</th>
+              <th class="import-review-text-col"><button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none import-sort-header" data-import-sort-section="exp" data-import-sort="source">Source</button></th>
+              <th class="import-review-text-col"><button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none import-sort-header" data-import-sort-section="exp" data-import-sort="payee">Payee</button></th>
+              <th class="import-review-text-col">Memo</th>
+              <th style="width:26rem;">Assign</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for t in parsed.transactions %}
+            {% set i = loop.index0 %}
+            {% set row_state = import_row_states_by_index[i] %}
+            {% set amt = row_state.amount_cents / 100 %}
+            {% if row_state.section == 'exp' %}
+              {% set cents = row_state.amount_cents %}
+              {% set fit = row_state.fitid %}
+              {% set already_imported = row_state.already_imported %}
+              <tr class="{{ 'table-success' if already_imported else '' }}"
+                data-section="exp"
+                data-row-index="{{ i }}"
+                data-amount-cents="{{ cents }}"
+                data-fitid="{{ fit }}"
+                data-posted-at="{{ t.posted_at }}"
+                data-payee="{{ t.payee or '' }}"
+                data-original-order="{{ i }}">
+                <td>
+                  <input class="form-check-input row-check exp-row"
+                        type="checkbox"
+                        name="row_{{ i }}"
+                        data-range-checkbox
+                        {{ '' if already_imported else 'checked' }}
+                        {{ 'disabled' if already_imported else '' }}>
+                </td>
+                <td>
+                  <input type="hidden" name="posted_at_{{ i }}" value="{{ t.posted_at }}">
+                  {{ t.posted_at }}
+                </td>
+                <td class="text-danger text-end text-nowrap">
+                  <input type="hidden" name="amount_{{ i }}" value="{{ t.amount if t.amount is defined else (t.amount_cents/100 if t.amount_cents is defined else (t.trnamt if t.trnamt is defined else 0)) }}">
+                  {{ (cents|abs // 100) }}.{% if (cents|abs) % 100 < 10 %}0{% endif %}{{ (cents|abs) % 100 }}
+                </td>
+                <td class="import-review-text-col">
+                  {% set raw_payee_tooltip = t.payee or '' %}
+                  {% if t.memo %}
+                    {% set raw_payee_tooltip = (raw_payee_tooltip ~ ' - ' ~ t.memo) if raw_payee_tooltip else t.memo %}
+                  {% endif %}
+                  <div class="import-payee-hover import-source-preview small" data-payee-tooltip="{{ raw_payee_tooltip }}">
+                    {{ t.payee or '—' }}
+                  </div>
+                  <input type="hidden"
+                        name="orig_payee_{{ i }}"
+                        value="{{ t.payee or '' }}">
+                  <input type="hidden"
+                        name="orig_memo_{{ i }}"
+                        value="{{ t.memo or '' }}">
+                </td>
+                <td class="import-review-text-col">
+                  <input class="form-control form-control-sm import-payee-input"
+                        type="text"
+                        name="payee_{{ i }}"
+                        value="{{ t.payee or '' }}"
+                        maxlength="400"
+                        {{ 'disabled' if already_imported else '' }}>
+                </td>
+                <td class="import-review-text-col">
+                  <input class="form-control form-control-sm"
+                        type="text"
+                        name="memo_{{ i }}"
+                        value="{{ t.memo or '' }}"
+                        maxlength="200"
+                        {{ 'disabled' if already_imported else '' }}>
+                </td>
+
+                {# --- Assign column: Quick assign + Split button --- #}
+                <td class="import-review-action-col">
+                  <div class="d-flex gap-2 align-items-center import-assign-controls">
+                    <select class="form-select form-select-sm exp-quick exp-quick-placeholder import-assign-select"
+                            name="exp_single_{{ i }}"
+                            data-role="exp-quick"
+                            data-placeholder-class="exp-quick-placeholder"
+                            data-row-index="{{ i }}"
+                            {{ 'disabled' if already_imported else '' }}>
+                      <option value="">Quick assign to envelope…</option>
+                      {% for e in envelopes_all %}
+                        <option value="{{ e.id }}"
+                                data-locked-account-id="{{ e.locked_account_id if e.locked_account_id is not none else '' }}">
+                          {{ e.name }}
+                        </option>
+                      {% endfor %}
+                    </select>
+
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary exp-split-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#importSplitModal"
+                            data-row-index="{{ i }}"
+                            data-section="exp"
+                            {{ 'disabled' if already_imported else '' }}>
+                      Split...
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-primary ms-1 trf-btn"
+                            data-bs-toggle="modal"
+                            data-bs-target="#importTransferModal"
+                            data-row-index="{{ i }}"
+                            {{ 'disabled' if already_imported else '' }}>
+                      Transfer...
+                    </button>
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary ms-1 predict-clear-btn"
+                            data-row-index="{{ i }}"
+                            hidden
+                            {{ 'disabled' if already_imported else '' }}>
+                      Clear
+                    </button>
+                  </div>
+                  <input type="hidden" name="trntype_{{ i }}" value="{{ t.trntype }}">
+                  <input type="hidden" name="fitid_{{ i }}"    value="{{ fit }}">
+                  <input type="hidden" name="match_tx_{{ i }}" value="">
+                  <input type="hidden" name="match_amt_src_{{ i }}" value="">
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ----------------- INCOME SECTION ----------------- #}
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <div class="fw-semibold">Income</div>
+      <div class="form-check m-0">
+        <input class="form-check-input" type="checkbox" id="inc_select_all">
+        <label class="form-check-label" for="inc_select_all">Select all</label>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive import-review-table-wrap">
+        <table class="table table-sm align-middle mb-0 import-review-table" data-import-sort-section="inc" data-checkbox-range-scope>
+          <thead class="app-table-head">
+            <tr>
+              <th style="width:2rem;"></th>
+              <th style="width:8rem;"><button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none import-sort-header" data-import-sort-section="inc" data-import-sort="date">Date</button></th>
+              <th style="width:6rem;">Amount</th>
+              <th class="import-review-text-col"><button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none import-sort-header" data-import-sort-section="inc" data-import-sort="source">Source</button></th>
+              <th class="import-review-text-col"><button type="button" class="btn btn-link btn-sm p-0 text-reset text-decoration-none import-sort-header" data-import-sort-section="inc" data-import-sort="payee">Payee</button></th>
+              <th class="import-review-text-col">Memo</th>
+              <th style="width:16rem;">Distribute</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for t in parsed.transactions %}
+            {% set i = loop.index0 %}
+            {% set row_state = import_row_states_by_index[i] %}
+            {% set amt = row_state.amount_cents / 100 %}
+            {% if row_state.section == 'inc' %}
+              {% set cents = row_state.amount_cents %}
+              {% set fit = row_state.fitid %}
+              {% set already_imported = row_state.already_imported %}
+              <tr class="{{ 'table-success' if already_imported else '' }}"
+                data-section="inc"
+                data-row-index="{{ i }}"
+                data-amount-cents="{{ cents }}"
+                data-fitid="{{ fit }}"
+                data-posted-at="{{ t.posted_at }}"
+                data-payee="{{ t.payee or '' }}"
+                data-original-order="{{ i }}">
+                <td>
+                  <input class="form-check-input row-check inc-row"
+                        type="checkbox"
+                        name="row_{{ i }}"
+                        data-range-checkbox
+                        {{ '' if already_imported else 'checked' }}
+                        {{ 'disabled' if already_imported else '' }}>
+                </td>
+                <td>
+                  <input type="hidden" name="posted_at_{{ i }}" value="{{ t.posted_at }}">
+                  {{ t.posted_at }}
+                </td>
+                <td class="text-success text-end text-nowrap">
+                  <input type="hidden" name="amount_{{ i }}" value="{{ t.amount if t.amount is defined else (t.amount_cents/100 if t.amount_cents is defined else (t.trnamt if t.trnamt is defined else 0)) }}">
+                  {{ (cents // 100) }}.{% if cents % 100 < 10 %}0{% endif %}{{ cents % 100 }}
+                </td>
+                <td class="import-review-text-col">
+                  {% set raw_payee_tooltip = t.payee or '' %}
+                  {% if t.memo %}
+                    {% set raw_payee_tooltip = (raw_payee_tooltip ~ ' - ' ~ t.memo) if raw_payee_tooltip else t.memo %}
+                  {% endif %}
+                  <div class="import-payee-hover import-source-preview small" data-payee-tooltip="{{ raw_payee_tooltip }}">
+                    {{ t.payee or '—' }}
+                  </div>
+                  <input type="hidden"
+                        name="orig_payee_{{ i }}"
+                        value="{{ t.payee or '' }}">
+                  <input type="hidden"
+                        name="orig_memo_{{ i }}"
+                        value="{{ t.memo or '' }}">
+                </td>
+                <td class="import-review-text-col">
+                  <input class="form-control form-control-sm import-payee-input"
+                        type="text"
+                        name="payee_{{ i }}"
+                        value="{{ t.payee or '' }}"
+                        maxlength="400"
+                        {{ 'disabled' if already_imported else '' }}>
+                </td>
+                <td class="import-review-text-col">
+                  <input class="form-control form-control-sm"
+                        type="text"
+                        name="memo_{{ i }}"
+                        value="{{ t.memo or '' }}"
+                        maxlength="200"
+                        {{ 'disabled' if already_imported else '' }}>
+                </td>
+
+                <td class="import-review-action-col">
+                  <button type="button"
+                          class="btn btn-sm btn-outline-secondary inc-split-btn"
+                          data-bs-toggle="modal"
+                          data-bs-target="#importSplitModal"
+                          data-row-index="{{ i }}"
+                          data-section="inc"
+                          {{ 'disabled' if already_imported else '' }}>
+                    Split...
+                  </button>
+                  <button type="button"
+                          class="btn btn-sm btn-outline-primary ms-1 trf-btn"
+                          data-bs-toggle="modal"
+                          data-bs-target="#importTransferModal"
+                          data-row-index="{{ i }}"
+                          {{ 'disabled' if already_imported else '' }}>
+                    Transfer...
+                  </button>
+                  <button type="button"
+                          class="btn btn-sm btn-outline-secondary ms-1 predict-clear-btn"
+                          data-row-index="{{ i }}"
+                          hidden
+                          {{ 'disabled' if already_imported else '' }}>
+                    Clear
+                  </button>
+                  <input type="hidden" name="trntype_{{ i }}" value="{{ t.trntype }}">
+                  <input type="hidden" name="fitid_{{ i }}"    value="{{ fit }}">
+                  <input type="hidden" name="match_tx_{{ i }}" value="">
+                  <input type="hidden" name="match_amt_src_{{ i }}" value="">
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex">
+    <button class="btn btn-primary ms-auto" type="submit">Commit Selected</button>
+  </div>
+
+  <div id="importReviewLazyFields" hidden></div>
+
+  <div class="modal fade" id="importSplitModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" data-role="split-title">Split</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" data-role="split-body"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary me-auto" data-role="split-clear">Clear</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-validate-env-dismiss>Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="importTransferModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" data-role="transfer-title">Account Transfer</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" data-role="transfer-body"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary me-auto" data-role="transfer-clear">Clear</button>
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-validate-env-dismiss>Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="modal fade" id="importDraftRestoreModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Restore import review draft?</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">A saved draft exists for this same file and account.</p>
+          <div class="small text-muted" data-role="draft-restore-summary"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-role="draft-discard">Discard draft</button>
+          <button type="button" class="btn btn-primary" data-role="draft-restore">Restore draft</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</form>
+
+{% include "import_review/_amount_diff_modal.html" %}
+<script type="application/json" id="IMPORT_PREFILLS_JSON">{{ import_prefills | default([]) | tojson }}</script>
+<script type="application/json" id="IMPORT_PAYEE_PREFILLS_JSON">{{ payee_prefills | default([]) | tojson }}</script>
+<script type="application/json" id="IMPORT_ROW_STATES_JSON">{{ import_row_states | default([]) | tojson }}</script>
+<script type="application/json" id="IMPORT_DRAFT_IDENTITY_JSON">{{ import_draft_identity | default({}) | tojson }}</script>
+<script type="application/json" id="IMPORT_REVIEW_DRAFT_JSON">{{ import_review_draft | default(none) | tojson }}</script>
+<script src="{{ url_for('static', filename='import_review.js', v='20260705-import-grid') }}"></script>
+{% endblock %}

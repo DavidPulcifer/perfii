@@ -1,0 +1,191 @@
+{% extends "layout.html" %}
+{% block content %}
+
+{% macro bank_tx_pager(position, show_disabled=False) -%}
+  {% if show_disabled or tx_prev_url or tx_next_url %}
+    <div class="d-flex justify-content-between align-items-center my-2 bank-transaction-pager" data-pagination-position="{{ position }}">
+      <div class="text-muted small">
+        {% if tx_total %}
+          Showing {{ ((tx_page-1)*tx_per_page)+1 }}-{{ [tx_page*tx_per_page, tx_total]|min }} of {{ tx_total }}
+        {% else %}
+          No transactions
+        {% endif %}
+      </div>
+      <div class="btn-group">
+        <a class="btn btn-sm btn-outline-secondary {% if not tx_prev_url %}disabled{% endif %}" href="{{ tx_prev_url or '#' }}">Previous</a>
+        <a class="btn btn-sm btn-outline-secondary {% if not tx_next_url %}disabled{% endif %}" href="{{ tx_next_url or '#' }}">Next</a>
+      </div>
+    </div>
+  {% endif %}
+{%- endmacro %}
+
+<style>
+  .bank-transactions-table-wrapper { overflow-x: auto; }
+  table.bank-transactions-table { min-width: 760px; }
+  table.bank-transactions-table td, table.bank-transactions-table th { vertical-align: top; }
+  .bank-running-balance { white-space: nowrap; }
+</style>
+
+<h4 class="d-flex align-items-center gap-3 mb-3">
+  <span>Bank Account: {{ acct.name }}</span>
+  <span class="badge text-bg-secondary fs-6">
+    <span class="{% if (current_balance_cents or 0) < 0 %}text-danger{% endif %}">
+      {{ (current_balance_cents or 0)|money }}
+    </span>
+  </span>
+</h4>
+
+<div class="row g-3 mb-3">
+  <div class="col-auto">
+    <a class="btn btn-outline-primary" href="{{ url_for('transactions.list_by_account', account_id=acct.id) }}">
+      View Transactions
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-primary" href="{{ url_for('reconciliation.account_reconcile', account_id=acct.id) }}">
+      Reconcile
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('reconciliation.history', account_id=acct.id) }}">
+      Reconciliation History
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('accounts.account_edit', account_id=acct.id) }}">
+      Edit Account
+    </a>
+  </div>
+  <div class="col-auto">
+    <a class="btn btn-outline-secondary" href="{{ url_for('core.index') }}">
+      Back to Main Dashboard
+    </a>
+  </div>
+</div>
+
+<!-- Account summary and envelope balances -->
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Account Summary</div>
+  <div class="card-body">
+    <div class="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+      <div>
+        <div class="text-muted small">Current Balance</div>
+        <div class="display-6 mb-0">
+          <span class="{% if (current_balance_cents or 0) < 0 %}text-danger{% endif %}">
+            {{ (current_balance_cents or 0)|money }}
+          </span>
+        </div>
+      </div>
+      {% if acct.opening_date %}
+        <div class="text-md-end small text-muted">
+          <div>Opened {{ acct.opening_date }}</div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="border-top pt-3">
+      <div class="fw-semibold mb-2">Envelope balances</div>
+      {% if env_metrics %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead class="app-table-head">
+              <tr>
+                <th>Envelope</th>
+                <th class="text-end" style="width:10rem;">Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for e in env_metrics %}
+                {% set bal = e.balance_cents or 0 %}
+                <tr>
+                  <td>
+                    <a class="envelope-detail-link text-reset text-decoration-none" href="{{ url_for('envelopes.detail', envelope_id=e.envelope_id) }}">
+                      {{ e.envelope_name }}
+                    </a>
+                  </td>
+                  <td class="text-end">
+                    <span class="{% if bal < 0 %}text-danger{% endif %}">{{ bal|money }}</span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-muted">No envelopes available for this account yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Recent transactions -->
+<div class="card">
+  <div class="card-header">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <div class="fw-semibold">Recent Transactions</div>
+        <div class="small text-muted">Newest first. Running balance is the account balance after each transaction posted.</div>
+      </div>
+      <form class="d-flex align-items-center gap-2" method="get" action="{{ url_for('bank.bank_dashboard', account_id=account_id) }}">
+        <label class="form-label small text-muted mb-0" for="bankTxPerPage">Per page</label>
+        <select class="form-select form-select-sm" id="bankTxPerPage" name="per_page" onchange="this.form.submit()">
+          {% for n in tx_per_page_options %}
+            <option value="{{ n }}" {% if tx_per_page == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+        <input type="hidden" name="page" value="1">
+      </form>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {% if txs and txs|length > 0 %}
+      <div class="px-3 pt-2">
+        {{ bank_tx_pager('top') }}
+      </div>
+      <div class="bank-transactions-table-wrapper">
+        <table class="table table-sm align-middle bank-transactions-table mb-0">
+          <thead class="app-table-head">
+            <tr>
+              <th style="width:8rem;">Date</th>
+              <th>Payee</th>
+              <th>Memo</th>
+              <th class="text-end" style="width:10rem;">Amount</th>
+              <th class="text-end" style="width:11rem;">Running Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in txs %}
+            <tr>
+              <td>{{ t.posted_at }}</td>
+              <td>{{ t.payee }}</td>
+              <td class="text-truncate" style="max-width:22rem;">{{ t.memo if t.memo is not none else '' }}</td>
+              <td class="text-end">
+                <span class="{% if (t.amount_cents or 0) < 0 %}text-danger{% endif %}">
+                  {{ (t.amount_cents or 0)|money }}
+                </span>
+              </td>
+              <td class="text-end bank-running-balance">
+                <span class="{% if (t.running_balance_cents or 0) < 0 %}text-danger{% endif %}">
+                  {{ (t.running_balance_cents or 0)|money }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="px-3 pb-2">
+        {{ bank_tx_pager('bottom', show_disabled=True) }}
+      </div>
+    {% else %}
+      <div class="p-3 text-muted">No recent activity.</div>
+    {% endif %}
+  </div>
+  <div class="card-footer text-end">
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('transactions.list_by_account', account_id=acct.id) }}">
+      View all transactions
+    </a>
+  </div>
+</div>
+
+{% endblock %}

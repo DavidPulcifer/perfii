@@ -1,0 +1,189 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4 class="mb-3">Create User</h4>
+<form method="post" action="{{ url_for('users.create_user') }}" class="w-100" style="max-width:40rem;">
+  <div class="mb-3">
+    <label class="form-label">Name</label>
+    <input class="form-control" type="text" name="name" value="{{ default_name }}" required>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Database location</label>
+
+    <div class="input-group mb-2">
+        <input class="form-control" type="text" id="db_path" name="db_path" value="{{ default_path }}" required>
+        {% if desktop_mode %}
+        <button type="button" class="btn btn-outline-secondary" id="browseDesktopBtn">Browse (Desktop)</button>
+        {% endif %}
+    </div>
+
+    <div class="form-text">
+        On the server, keep user databases under the configured persistent data directory.
+    </div>
+  </div>
+  <div class="d-flex">
+    <button class="btn btn-primary">Create</button>
+    <a class="btn btn-outline-secondary ms-2" href="{{ url_for('users.users_home') }}">Cancel</a>
+  </div>
+</form>
+<!-- Folder picker modal -->
+<div class="modal fade" id="dirPickerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-md modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Choose Database Folder</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <nav class="mb-2 small" id="dirBreadcrumb"></nav>
+        <ul class="list-group" id="dirList"></ul>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="chooseDirBtn" disabled>Use this folder</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  // Elements
+  const dbDirInput   = document.getElementById('db_dir');
+  const dbFileInput  = document.getElementById('db_filename');
+  const dbPathHidden = document.getElementById('db_path');
+  const listEl       = document.getElementById('dirList');
+  const crumbEl      = document.getElementById('dirBreadcrumb');
+  const chooseBtn    = document.getElementById('chooseDirBtn');
+
+  if (!dbDirInput || !dbFileInput || !dbPathHidden || !listEl || !crumbEl || !chooseBtn) return;
+
+  let currentRel = '';   // relative path within USER_DB_DIR
+  let selectedRel = '';  // currently 'open' folder rel (choose-able)
+
+  function updateHiddenPath() {
+    // Compose db_path from chosen folder + filename
+    const folder = dbDirInput.value || '';
+    const file   = (dbFileInput.value || 'user.sqlite').replace(/[/\\]+/g,'');
+    const sep    = folder.endsWith('/') || folder.endsWith('\\') ? '' : '/';
+    dbPathHidden.value = folder ? (folder + sep + file) : file;
+  }
+
+  async function loadDir(rel='') {
+    const base = window.location.origin + '{{ url_for("users.users_home") }}'.replace(/\/$/, '');
+    const url  = base + '/browse-dirs?rel=' + encodeURIComponent(rel);
+    const resp = await fetch(url);
+    if (!resp.ok) return;
+    const data = await resp.json();
+
+    currentRel  = data.rel || '';
+    selectedRel = currentRel;
+
+    // Render breadcrumb (relative within allowed root)
+    const parts = currentRel ? currentRel.split('/') : [];
+    let pathAcc = '';
+    crumbEl.innerHTML = [
+      `<a href="#" data-rel="">root</a>`
+    ].concat(parts.map((p,i) => {
+      pathAcc = parts.slice(0, i+1).join('/');
+      return `<span class="mx-1">/</span><a href="#" data-rel="${pathAcc}">${p}</a>`;
+    })).join('');
+
+    // Render dirs
+    listEl.innerHTML = '';
+    data.items.forEach(item => {
+      const li = document.createElement('li');
+      li.className = 'list-group-item d-flex justify-content-between align-items-center';
+      li.innerHTML = `
+        <span>${item.name}</span>
+        <div class="btn-group">
+          ${item.up ? '' : `<button type="button" class="btn btn-sm btn-outline-secondary" data-open="${item.rel}">Open</button>`}
+        </div>
+      `;
+      listEl.appendChild(li);
+    });
+
+    // Reflect chosen folder
+    dbDirInput.value = currentRel ? currentRel : '';
+    chooseBtn.disabled = false;
+    updateHiddenPath();
+  }
+
+  // Clicks in breadcrumb
+  crumbEl?.addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-rel]');
+    if (!a) return;
+    e.preventDefault();
+    loadDir(a.getAttribute('data-rel') || '');
+  });
+
+  // Open subfolder
+  listEl?.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-open]');
+    if (!btn) return;
+    loadDir(btn.getAttribute('data-open') || '');
+  });
+
+  // Confirm choice
+  chooseBtn?.addEventListener('click', () => {
+    // db_dir shows the relative path inside USER_DB_DIR
+    dbDirInput.value = currentRel;
+    updateHiddenPath();
+    const modal = bootstrap.Modal.getInstance(document.getElementById('dirPickerModal'));
+    modal?.hide();
+  });
+
+  // Keep db_path in sync when filename changes
+  dbFileInput?.addEventListener('input', updateHiddenPath);
+
+  // Initialize picker on modal open
+  document.getElementById('dirPickerModal')
+    ?.addEventListener('show.bs.modal', () => loadDir(currentRel));
+
+  // Seed initial values from defaults (server provided default_path)
+  (function seedFromDefault(){
+    const def = dbPathHidden.value || '';
+    if (!def) return;
+    // Split default into rel + filename assuming it's under USER_DB_DIR;
+    // if not, keep the whole path in db_path and leave folder empty.
+    const parts = def.replace(/\\+/g,'/').split('/');
+    if (parts.length > 1) {
+      dbFileInput.value = parts.pop();
+      dbDirInput.value  = parts.join('/');
+    }
+    updateHiddenPath();
+  })();
+})();
+</script>
+
+<script>
+(function(){
+  const btn = document.getElementById('browseDesktopBtn');
+  const pathInput = document.getElementById('db_path');
+
+  async function pickFolderDesktop() {
+    if (!window.pywebview || !window.pywebview.api || !window.pywebview.api.pick_folder) {
+      alert("Desktop folder picker is not available. Launch the app via the desktop runner to enable it.");
+      return;
+    }
+    // Suggest the existing folder in the field (if any)
+    const current = pathInput.value || "";
+    const startDir = current.replace(/\\/g,'/').split('/').slice(0,-1).join('/');
+    try {
+      const folder = await window.pywebview.api.pick_folder(startDir);
+      if (folder) {
+        // If field already contains a filename, keep it; otherwise default to user.sqlite
+        const currentParts = (pathInput.value || '').replace(/\\/g,'/').split('/');
+        const last = currentParts[currentParts.length-1] || '';
+        const hasExt = /\.[A-Za-z0-9]+$/.test(last);
+        const filename = hasExt ? last : 'user.sqlite';
+        const sep = folder.endsWith('/') ? '' : '/';
+        pathInput.value = folder + sep + filename;
+      }
+    } catch (e) {
+      console.warn("pick_folder failed:", e);
+    }
+  }
+
+  btn?.addEventListener('click', pickFolderDesktop);
+})();
+</script>
+
+{% endblock %}

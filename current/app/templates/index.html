@@ -1,0 +1,227 @@
+{% extends "layout.html" %}
+{% block content %}
+{% set account_totals  = account_totals|default({}) %}
+{% set envelope_totals = envelope_totals|default({}) %}
+{% set balances        = balances|default({}) %}
+{% set dashboard_unallocated = dashboard_unallocated|default({}) %}
+{% set dashboard_unallocated_by_account = dashboard_unallocated.get('by_account', {}) %}
+{% set bank_accounts   = accounts | selectattr('account_type', 'equalto', 'bank')        | sort(attribute='name') %}
+{% set cc_accounts     = accounts | selectattr('account_type', 'equalto', 'credit_card') | sort(attribute='name') %}
+{% set loan_accounts   = accounts | selectattr('account_type', 'equalto', 'loan')        | sort(attribute='name') %}
+{% set invest_accounts = accounts | selectattr('account_type', 'equalto', 'investment')  | sort(attribute='name') %}
+
+<style>
+  /* Indent accordion contents a bit so sub-items read as nested */
+  .accordion-body-inset {
+    padding-left: 1.5rem;
+  }
+
+  /* Master envelope header behaves like a collapsible header with an arrow */
+  .master-toggle {
+    cursor: pointer;
+  }
+  .master-toggle::after {
+    content: '▸';
+    float: right;
+  }
+  .master-toggle[aria-expanded="true"]::after {
+    content: '▾';
+  }
+</style>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-6">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0">Accounts</h5>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('accounts.list_accounts') }}">
+        Manage Accounts
+      </a>
+    </div>
+
+    {# BANK ACCOUNTS #}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Bank Accounts</div>
+      <div class="card-body">        
+        {% if bank_accounts %}
+          <ul class="list-group">
+            {% for a in bank_accounts %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a class="text-decoration-none link-body-emphasis" href="{{ url_for('bank.bank_dashboard', account_id=a.id) }}">
+                  {{ a.name }}
+                </a>
+                <a class="badge text-bg-secondary fs-6 text-decoration-none" href="{{ url_for('bank.bank_dashboard', account_id=a.id) }}">
+                  {% set acct_total = account_totals.get(a.id, 0) %}
+                  <span class="{% if acct_total < 0 %}text-danger{% endif %}">
+                    {{ acct_total|money }}
+                  </span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No bank accounts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# CREDIT CARDS #}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Credit Cards</div>
+      <div class="card-body">
+        {% if cc_accounts %}
+          <ul class="list-group">
+            {% for a in cc_accounts %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a class="text-decoration-none link-body-emphasis" href="{{ url_for('credit.credit_card_dashboard', account_id=a.id) }}">
+                  {{ a.name }}
+                </a>
+                <a class="badge text-bg-secondary fs-6 text-decoration-none" href="{{ url_for('credit.credit_card_dashboard', account_id=a.id) }}">
+                  {% set acct_total = account_totals.get(a.id, 0) %}
+                  <span class="{% if acct_total < 0 %}text-danger{% elif acct_total > 0 %}text-success{% endif %}">
+                    {{ acct_total|money }}
+                    {% if acct_total > 0 %}<small>credit</small>{% endif %}
+                  </span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No credit card accounts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# LOANS #}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Loans</div>
+      <div class="card-body">
+        {% if loan_accounts %}
+          <ul class="list-group">
+            {% for a in loan_accounts %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a class="text-decoration-none link-body-emphasis" href="{{ url_for('loans.loan_dashboard', account_id=a.id) }}">
+                  {{ a.name }}
+                </a>
+                <a class="badge text-bg-secondary fs-6 text-decoration-none" href="{{ url_for('loans.loan_dashboard', account_id=a.id) }}">
+                  {% set acct_total = account_totals.get(a.id, 0) %}
+                  <span class="{% if acct_total < 0 %}text-danger{% endif %}">
+                    {{ acct_total|money }}
+                  </span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No loan accounts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# INVESTMENTS #}
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">Investments</div>
+      <div class="card-body">
+        {% if invest_accounts %}
+          <ul class="list-group">
+            {% for a in invest_accounts %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <a class="text-decoration-none link-body-emphasis" href="{{ url_for('invest.invest_dashboard', account_id=a.id) }}">
+                  {{ a.name }}
+                </a>
+                <a class="badge text-bg-secondary fs-6 text-decoration-none" href="{{ url_for('invest.invest_dashboard', account_id=a.id) }}">
+                  {% set acct_total = account_totals.get(a.id, 0) %}
+                  <span class="{% if acct_total < 0 %}text-danger{% endif %}">
+                    {{ acct_total|money }}
+                  </span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">No investment accounts yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <div class="col-12 col-lg-6">
+
+    {# Column header: Envelopes + Manage button #}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5 class="mb-0">Envelopes</h5>
+      <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('envelopes.list_') }}">
+        Manage Envelopes
+      </a>
+    </div>
+        <div id="dashboard-balance-panels" data-dashboard-balances-url="{{ url_for('core.dashboard_balance_panels') }}">
+          <div class="card mb-3" aria-busy="true">
+            <div class="card-header fw-semibold">Budget and envelope balances</div>
+            <div class="card-body text-muted">
+              Loading balance panels… Transaction buttons are ready to use while this finishes.
+            </div>
+          </div>
+        </div>
+
+        <script>
+          (function () {
+            const target = document.getElementById('dashboard-balance-panels');
+            if (!target) return;
+
+            const url = target.getAttribute('data-dashboard-balances-url');
+            if (!url) return;
+
+            function selectorBalancesJSON(raw) {
+              try {
+                const parsed = JSON.parse(raw || '{}');
+                if (!Array.isArray(parsed)) return JSON.stringify(parsed || {});
+                const out = {};
+                parsed.forEach((row) => {
+                  const accountId = row && row.account_id;
+                  const envelopeId = row && row.envelope_id;
+                  if (accountId == null || envelopeId == null) return;
+                  const accountKey = String(accountId);
+                  const envelopeKey = String(envelopeId);
+                  if (!out[accountKey]) out[accountKey] = {};
+                  out[accountKey][envelopeKey] = parseInt(row.total || 0, 10) || 0;
+                });
+                return JSON.stringify(out);
+              } catch {
+                return '{}';
+              }
+            }
+
+            function installBalancesJSON() {
+              const asyncJSON = document.getElementById('dashboard-balances-json');
+              const modalJSON = document.getElementById('balances-json');
+              if (!asyncJSON) return;
+              if (!modalJSON) {
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', installBalancesJSON, { once: true });
+                }
+                return;
+              }
+              modalJSON.textContent = selectorBalancesJSON(asyncJSON.textContent);
+              asyncJSON.remove();
+              if (window.__applyEnvelopeFilters) window.__applyEnvelopeFilters();
+            }
+
+            fetch(url, { headers: { 'X-Requested-With': 'fetch' } })
+              .then((response) => {
+                if (!response.ok) throw new Error('Balance panels failed to load');
+                return response.text();
+              })
+              .then((html) => {
+                target.innerHTML = html;
+                installBalancesJSON();
+              })
+              .catch(() => {
+                target.innerHTML = '<div class="alert alert-warning" role="alert">Balance panels could not load. Refresh the page to try again; transaction buttons still work.</div>';
+              });
+          })();
+        </script>
+
+  </div>
+
+</div>
+{% endblock %}
