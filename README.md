@@ -23,6 +23,30 @@ The application brings accounts, envelope groups, transactions, linked transfers
 
 Personal finance workflows vary too much for one fixed interface to suit everyone. This repository therefore documents its architecture, safety boundaries, customization surfaces, and deployment options for a coding agent that is adapting the app to one person's needs. The Pay Yourself First planner is one example of that philosophy: a recurring percentage-based savings practice can become a reviewed, durable workflow without forcing every user into the same routine.
 
+## Built with GPT-5.6 and Codex
+
+Perfii existed before the July 13–21, 2026 submission period. The work submitted from that period is a meaningful extension of the existing application, built through Codex in the ChatGPT desktop app with GPT-5.6. GPT-5.6 and Codex were development collaborators; Perfii has no runtime AI dependency and does not require an OpenAI API key.
+
+### Pre-existing foundation
+
+Before July 13, the project already included its Flask, Jinja, and SQLite architecture; selected-user ledger isolation; accounts and envelope accounting; transactions and linked transfers; statement imports and categorization support; reconciliation; credit cards; loans; investments; and local user administration.
+
+### Work completed with GPT-5.6 and Codex during the submission period
+
+- Translated a percentage-based payday savings workbook into the **Pay Yourself First** planner, including persistent rules, deterministic integer-cent allocation, accessible-savings targets, and the strict whole-contribution cutoff to long-term savings.
+- Integrated reviewed recommendations with the existing ledger as balanced transfer pairs, with selected-user binding, expiring previews, rollback protection, and durable duplicate-recording prevention.
+- Added the fictional demonstration workspace, create-only schema bootstrap, workspace doctor, backup/restore workflow, ledger-invariant checks, source and history privacy scanning, and automated release verification.
+- Built the coding-agent customization package: the architecture map, questionnaire, domain playbooks, machine-readable manifest, deployment guidance, data-safety rules, and constrained theme helper.
+- Exercised the workflow with generated data through service and request tests, desktop and narrow-browser checks, repository privacy audits, and the complete 637-test regression suite.
+
+### How the collaboration worked
+
+- **Where Codex accelerated the workflow:** Codex mapped the existing architecture, analyzed the savings workbook, turned product decisions into a vertical implementation across migrations, repositories, services, routes, templates, and tests, and performed repository-wide safety and release audits. It also diagnosed a Windows CI path-alias failure that appeared only on GitHub's runner.
+- **Key decisions made by the owner:** The owner chose the problem and supplied the real-world workflow, pivoted away from receipt parsing to a privacy-safe savings feature, required percentage-based contributions and a hard accessible-first cutoff, simplified the interface and automatic rule saving, rejected a runtime OpenAI integration, and defined the project as a customizable web app rather than a one-click desktop product.
+- **How GPT-5.6 and Codex shaped the result:** GPT-5.6 was used through Codex to reason about financial invariants and edge cases, implement and revise the feature, challenge scope, generate synthetic acceptance coverage, improve the coding-agent handoff material, and prepare a clean public release. The owner reviewed the running application and made the final product, design, scope, and release decisions.
+
+The dated repository history and green [Release verification workflow](https://github.com/DavidPulcifer/perfii/actions/workflows/release-verification.yml) provide public implementation and validation evidence. The primary Codex task's `/feedback` Session ID is supplied separately in the Devpost submission.
+
 ## Privacy-safe quick start
 
 The commands below create new fictional data. The bootstrap is create-only and refuses to reuse or reset an existing destination.
@@ -57,7 +81,15 @@ python scripts/doctor.py --data-dir .local\demo-data-restored
 
 A workspace backup contains sensitive financial data even though it is stored as a directory rather than a ZIP. Keep it in an ignored, owner-controlled location. See [the data-operations guide](docs/agent/DATA_OPERATIONS.md) before asking an agent to operate on any non-fictional workspace.
 
-## Demonstration scenario
+## Quick evaluation path
+
+After starting the app with the fictional demo workspace:
+
+1. Choose **Demo User** and open **Savings**.
+2. Enter fictional take-home pay of `$3,200.00` and preview the plan.
+3. Confirm that the configured 18% savings rate produces `$576.00` in contributions and `$2,624.00` in remaining pay.
+4. Review how each purpose routes entirely to accessible or long-term savings according to its opening target balance.
+5. Record one reviewed transfer group, then open **Transactions** and verify the equal-and-opposite linked legs.
 
 The fictional demo is configured to show both sides of the cutoff:
 
