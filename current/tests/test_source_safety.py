@@ -277,7 +277,7 @@ class SourceSafetyTests(TestCase):
                 any("email is not an example or GitHub noreply" in item.message for item in report.violations)
             )
 
-    def test_history_scan_accepts_github_noreply_and_rejects_personal_shaped_name(self) -> None:
+    def test_history_scan_accepts_matching_github_noreply_and_rejects_other_personal_name(self) -> None:
         with tempfile.TemporaryDirectory(prefix="source-safety-test-") as raw_temp:
             repo = self._git_repo(Path(raw_temp))
             self._git(
@@ -290,6 +290,18 @@ class SourceSafetyTests(TestCase):
             (repo / "README.md").write_text("# Public release identity\n", encoding="utf-8")
             self._git(repo, "add", "--", "README.md")
             self._git(repo, "commit", "-q", "-m", "Public release update")
+            self.assertTrue(scan_git_history(repo).ok)
+
+            self._git(
+                repo,
+                "config",
+                "user.email",
+                "12345+PublicFixture" + "@users.noreply.github.com",
+            )
+            self._git(repo, "config", "user.name", "Public Fixture")
+            (repo / "README.md").write_text("# Matching public identity\n", encoding="utf-8")
+            self._git(repo, "add", "--", "README.md")
+            self._git(repo, "commit", "-q", "-m", "Matching public identity")
             self.assertTrue(scan_git_history(repo).ok)
 
             self._git(repo, "config", "user.name", "Private Person")
