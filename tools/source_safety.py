@@ -212,6 +212,10 @@ TOKEN_PATTERNS = (
 PUBLIC_COMMIT_EMAIL_DOMAINS = EXAMPLE_EMAIL_DOMAINS | {
     "users.noreply.github.com",
 }
+GITHUB_NOREPLY_IDENTITY_RE = re.compile(
+    r"^(?:[0-9]+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$",
+    re.IGNORECASE,
+)
 
 
 class SourceSafetyError(ValueError):
@@ -570,6 +574,17 @@ def _git_commit_contents(root: Path, object_ids: Sequence[str]) -> dict[str, byt
     return commits
 
 
+def _name_matches_github_noreply_identity(name: str, email: str) -> bool:
+    """Return whether a public GitHub username intentionally exposes this name."""
+
+    match = GITHUB_NOREPLY_IDENTITY_RE.fullmatch(email)
+    if match is None:
+        return False
+    normalized_name = re.sub(r"[^a-z0-9]", "", name.casefold())
+    normalized_username = re.sub(r"[^a-z0-9]", "", match.group(1).casefold())
+    return bool(normalized_name) and normalized_name == normalized_username
+
+
 def _validate_commit_content(commit: str, data: bytes) -> list[SourceSafetyViolation]:
     """Validate one raw commit's identities and message for public release."""
 
@@ -641,6 +656,7 @@ def _validate_commit_content(commit: str, data: bytes) -> list[SourceSafetyViola
             if (
                 PERSONAL_NAME_SHAPED_RE.fullmatch(name)
                 and not name_words.intersection(GENERIC_COMMIT_NAME_MARKERS)
+                and not _name_matches_github_noreply_identity(name, email)
             ):
                 violations.append(
                     SourceSafetyViolation(
