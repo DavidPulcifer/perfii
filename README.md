@@ -27,7 +27,7 @@ I built this to fit how I manage my budget, and then worked with GPT-5.6 and Cod
 
 The inciting incident that led to starting on this app was a few years ago when Amazon transactions started showing up with a unique ID instead of just AMAZON.COM. The unique IDs completely broke the auto-detections in the app I was using at the time so I had to handle all Amazon transactions manually. It seems like table stakes for an envelope budgeting app with envelope predictions to handle something like this, but alas it could not.
 
-I went to the support forum to see if other people were having this same issue and while I didn't get a solution to my problem I did see a lot of great features being requesting but there either wasn't enough support, or it was a feature the devs decided they did not intend to build regardless of interest level. So, it dawned on me the problem is you have one company trying to make a budget app that is everything for everyone, and so doesn't serve any one person very well.
+I went to the support forum to see if other people were having this same issue and while I didn't get a solution to my problem I did see a lot of great features being requested but there either wasn't enough support, or it was a feature the devs decided they did not intend to build regardless of interest level. So, it dawned on me the problem is you have one company trying to make a budget app that is everything for everyone, and so doesn't serve any one person very well.
 
 My goal here is not to make the best budgeting app, but to provide a template that you can turn into the best budgeting app for you.
 
@@ -165,6 +165,10 @@ python tools/agent_preflight.py --full
 ```
 
 Review any reported issue and confirm that the repository contains no database, export, upload, secret, local profile, log, backup, generated file, or real financial record.
+
+## Support
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/K3K7HRC0F)
 
 ## License
 
