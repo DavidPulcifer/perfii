@@ -1,33 +1,39 @@
 # Perfii: Pay Yourself First
 
-Perfii is a personal finance app that runs locally and uses envelope accounting. It brings accounts, envelopes, transactions, transfers, statement imports, reconciliation, credit cards, loans, investments, and savings plans together in one ledger.
+Perfii is a personal finance app that makes envelope budgeting faster by learning from your transaction history and reducing repetitive categorization work. It brings accounts, envelopes, credit cards, loans, investments, and savings plans together in one place. The **Pay Yourself First** planner also helps you follow through on your savings goals by making savings the first step when you process a paycheck.
 
-The **Pay Yourself First** planner helps you divide each paycheck by percentage. You choose what you are saving for, the percentage for each purpose, and where the money should go. Perfii directs each contribution to an accessible savings account until its target balance is reached. Future contributions then go to a longer-term savings account. You can review the plan before recording any transfers.
+Perfii's main feature is transaction category suggestions. The suggestions improve from your past choices and can recognize the same company even when its transaction descriptions vary.
 
-Perfii records balanced transfer entries in its local ledger. It does not connect to a bank or move money. It also runs without the OpenAI API or an OpenAI API key.
+The repository also includes guidance for coding agents so you can adapt Perfii's appearance, workflows, and hosting setup to your needs.
+
+Perfii's calculations and category suggestions run locally. It needs no API keys or external AI service. You can still use a coding agent to change the source code and make the app your own.
 
 ## Download and customize
 
 This repository contains the web app and documentation that helps a coding agent understand and adapt it:
 
 1. Download and extract the repository, or clone it with Git.
-2. Open the top-level project folder, which contains `README.md` and `AGENTS.md`, with the coding agent.
-3. Describe how you want to run the app and what you want changed. Use plain language and fictional examples. Do not provide bank credentials or real financial records.
-4. Tell the agent to read [AGENTS.md](AGENTS.md) before editing. It points to the project map, customization questionnaire, safety rules, and verification commands.
+2. Open the top-level project folder, which contains `README.md` and `AGENTS.md`, with the coding agent. This README is for you; `AGENTS.md` is for your coding agent.
+3. Tell the agent to read [AGENTS.md](AGENTS.md) before editing. It points to the project map, customization questionnaire, safety rules, and verification commands.
+4. Describe how you want to host the app, such as on your own computer or a private server, and explain what you want changed. Your coding agent can use the project guides to help implement those changes.
 
-Perfii currently runs as a local web app. The [deployment guide](docs/agent/DEPLOYMENT.md) explains what an agent would need to change and test for a desktop app, private server, or private cloud VM.
+Perfii runs as a local web app after setup. The [deployment guide](docs/agent/DEPLOYMENT.md) explains the work needed to convert it to a desktop app, private server, or private cloud VM.
 
 ## Why this exists
 
-Perfii grew out of years of using envelope-budgeting software whose everyday problems remained unfixed. The goal is to make the core work dependable: organizing envelopes, importing and reviewing transactions, suggesting useful categories, reconciling accounts, and correcting mistakes.
+Perfii grew out of years of using envelope-budgeting software and becoming frustrated that core user-experience problems were passed over in favor of premium add-on features. My goal is to provide the essential features of an envelope-budgeting system and make the program easy to adapt for your own needs. Coding agents make it possible for more people to take a project like this and build software that genuinely fits them.
 
-Imported transactions remain available for review. Category suggestions can improve from past choices. Transfers are stored as linked entries so both sides stay in balance. The user can see and correct financial changes while keeping the data on their own computer.
+I built Perfii around the way I manage my budget. I then worked with GPT-5.6 and Codex in the ChatGPT app to make the project easier for other people to change around the way they budget.
 
-People manage money in different ways. The repository includes detailed guidance so a coding agent can adapt Perfii's terms, appearance, workflows, and hosting setup to one person's needs without guessing how the financial pieces fit together.
+The incident that started this project happened a few years ago. Amazon transactions began including unique IDs in their descriptions, so the stable `AMAZON.COM` description disappeared. That change broke the automatic categorization in the budgeting app I was using, and I had to handle every Amazon transaction manually. An envelope-budgeting app with category predictions should be able to handle a change like that, but this one could not.
+
+I visited the support forum to see whether other people had the same problem. I did not find a solution, but I found many useful feature requests. Some did not have enough votes, while others were features the developers had decided not to build. That experience showed me the limitation of one company trying to make a single budgeting app for everyone: no fixed product will fit every person's financial routine equally well.
+
+My goal is to provide a template you can turn into the best budgeting app for you.
 
 ## Built with GPT-5.6 and Codex
 
-Perfii existed before the July 13-21, 2026 submission period. During that period, the owner used Codex in the ChatGPT desktop app, powered by GPT-5.6, to add the Pay Yourself First planner and prepare the project for coding-agent customization and public release.
+Perfii existed before the OpenAI Build Week Hackathon in July 2026. I built the core interface in VS Code with help from ChatGPT in 2024. As ChatGPT improved, I gradually used it for more of the coding work. During the July 2026 hackathon, I moved the project into the ChatGPT app and worked with GPT-5.6 through Codex to build the Pay Yourself First planner and the coding-agent guides that make Perfii easier to adapt.
 
 ### What already existed
 
@@ -35,19 +41,19 @@ Before July 13, Perfii already supported separate local ledgers for different us
 
 ### What was added with GPT-5.6 and Codex
 
-- Built the **Pay Yourself First** planner from the owner's payday savings spreadsheet. It saves percentage rules, calculates exact cent amounts, fills accessible savings targets first, and sends later contributions to long-term savings.
+- Built the **Pay Yourself First** planner. You can set savings rules as percentages of income and assign an accessible account and a longer-term account to each savings purpose. Contributions go to the accessible account until its target is reached, then future contributions go to the longer-term account. This reflects how I handle goals such as medical savings: out of `$2,000` set aside, I might keep `$500` immediately accessible and hold the rest in an account intended for longer-term savings.
 - Connected approved savings plans to the ledger as matching transfer-out and transfer-in entries. Safeguards prevent an expired plan or the same plan from being recorded twice.
 - Added a fictional demo workspace and tools for first-time setup, health checks, backup and restore, and ledger consistency checks.
 - Added project maps, a customization questionnaire, change guides, deployment guidance, data-safety rules, and a theme customization tool for coding agents.
 - Added privacy scans, automated release checks, and a 637-test regression suite that uses generated financial data.
 
-### How the collaboration worked
+### How the collaboration worked with GPT-5.6 and Codex
 
-The owner explained the real payday workflow and made the product decisions: percentage-based savings, accessible balance targets, a full cutoff to long-term savings after each target, automatic rule saving, and review before transfers are recorded. The owner tested the running app and requested interface changes throughout the work.
+I explained the workflows and made the product decisions: percentage-based savings, accessible balance targets, a full cutoff to long-term savings after each target, automatic rule saving, and review before transfers are recorded. I tested the app and requested interface changes throughout the work.
 
-Codex traced the existing application, studied the spreadsheet, proposed how the feature should fit into the ledger, implemented and revised the code, wrote tests, and checked for personal data, broken setup steps, and test failures. It also found and fixed a Windows-only test failure in GitHub Actions.
+Codex traced the existing application, studied my old budgeting spreadsheets, proposed how the Pay Yourself First feature should fit into the app, implemented and revised the code, wrote tests, and checked for personal data, broken setup steps, and test failures. It also found and fixed a Windows-only test failure in GitHub Actions.
 
-GPT-5.6 helped work through exact-cent calculations, savings cutoffs, stale previews, duplicate recording, database safety, and test coverage. The owner made the final decisions about the product, design, scope, and release.
+GPT-5.6 helped work through exact-cent calculations, savings cutoffs, stale previews, duplicate recording, database safety, and test coverage. I made the final decisions about the product, design, scope, and release.
 
 The Git history and [Release verification workflow](https://github.com/DavidPulcifer/perfii/actions/workflows/release-verification.yml) show the implementation and test results. The primary Codex task's `/feedback` Session ID is supplied separately in the Devpost submission.
 
@@ -72,19 +78,6 @@ For an empty starting point, replace `--profile demo` with `--profile schema` an
 
 The interface loads Bootstrap and investment-chart libraries from public CDNs. A fully offline installation would need local copies of those assets and their licenses.
 
-### Back up a workspace
-
-The backup utility copies live SQLite databases and restores them only into a new destination. Practice with fictional data first:
-
-```powershell
-Set-Location current
-python scripts/workspace_backup.py backup --data-dir .local\demo-data --backup-dir .local\backups\demo-data-backup
-python scripts/workspace_backup.py restore --backup-dir .local\backups\demo-data-backup --data-dir .local\demo-data-restored
-python scripts/doctor.py --data-dir .local\demo-data-restored
-```
-
-Backups contain financial data. Keep them in an ignored directory that only the owner can access. Read [the data-operations guide](docs/agent/DATA_OPERATIONS.md) before asking an agent to work with a real ledger.
-
 ## Quick evaluation path
 
 After starting the app with the fictional demo workspace:
@@ -101,6 +94,19 @@ The demo shows both outcomes:
 - **Future Adventures** has reached its accessible target, so its contribution goes to long-term savings.
 
 Recording a group adds both sides of the transfer to the local ledger. It does not contact a financial institution.
+
+## Back up a workspace
+
+The backup utility copies live SQLite databases and restores them only into a new destination. Practice with fictional data first:
+
+```powershell
+Set-Location current
+python scripts/workspace_backup.py backup --data-dir .local\demo-data --backup-dir .local\backups\demo-data-backup
+python scripts/workspace_backup.py restore --backup-dir .local\backups\demo-data-backup --data-dir .local\demo-data-restored
+python scripts/doctor.py --data-dir .local\demo-data-restored
+```
+
+Backups contain financial data. Keep them in an ignored directory that only the owner can access. Read [the data-operations guide](docs/agent/DATA_OPERATIONS.md) before asking an agent to work with a real ledger.
 
 ## Tests and checks
 
@@ -140,13 +146,11 @@ Local web use on a trusted computer is the tested setup. The [deployment guide](
 
 Planned improvements include:
 
-- Blind handoff tests in which a new coding agent receives only the repository and a fictional user request. The results will be used to improve unclear directions and checks.
-- Typo-tolerant transaction search across account, payee, and memo.
-- A more compact transaction-filter interface.
-- Category-suggestion benchmarks made from synthetic data.
-- Local copies of browser assets for offline use.
-- A broader accessibility review.
-- More hosting guides after each setup has been implemented and tested.
+- Improve the coding-agent instructions as more people use them in different environments.
+- Improve transaction search across account, payee, and memo.
+- Make the transaction-filter interface more compact.
+- Add more hosting guides after each setup has been implemented and tested.
+- Add receipt import that can read PDF or email receipts and suggest item splits.
 
 ## Maintainer release check
 
